@@ -1,0 +1,589 @@
+# 🗄️ Migraciones de Base de Datos SQL
+
+## ⚠️ IMPORTANTE: Ejecutar Estas Migraciones en Supabase Dashboard
+
+Para usar tablas SQL relacionadas en lugar de KV Store, debes ejecutar estas migraciones en el Supabase Dashboard:
+
+### Cómo ejecutar las migraciones:
+
+1. Ve a [Supabase Dashboard](https://app.supabase.com)
+2. Selecciona tu proyecto
+3. Ve a **SQL Editor** (menú izquierdo)
+4. Copia y pega cada bloque SQL
+5. Click en **"Run"**
+
+---
+
+## 📋 Migración 1: Crear Tablas Base
+
+```sql
+-- ============================================
+-- TABLA: profiles (extensión de auth.users)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  phone TEXT,
+  role TEXT NOT NULL CHECK (role IN ('usuario', 'operador', 'experto')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Índices para profiles
+CREATE INDEX idx_profiles_role ON public.profiles(role);
+CREATE INDEX idx_profiles_email ON public.profiles(email);
+
+-- ============================================
+-- TABLA: experts (datos adicionales de expertos)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.experts (
+  id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+  specializations TEXT[] NOT NULL DEFAULT '{}',
+  certifications TEXT[] DEFAULT '{}',
+  experience_years INTEGER DEFAULT 0,
+  department TEXT,
+  active_tickets INTEGER DEFAULT 0,
+  total_resolved INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Índices para experts
+CREATE INDEX idx_experts_specializations ON public.experts USING GIN(specializations);
+
+-- ============================================
+-- TABLA: operators (datos adicionales de operadores)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.operators (
+  id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+  department TEXT,
+  shift TEXT CHECK (shift IN ('mañana', 'tarde', 'noche', 'rotativo')),
+  supervisor_id UUID REFERENCES public.profiles(id),
+  tickets_assigned INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ============================================
+-- TABLA: tickets
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.tickets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  problem_type TEXT NOT NULL CHECK (problem_type IN ('internet', 'telefono', 'ambos')),
+  priority TEXT NOT NULL CHECK (priority IN ('baja', 'media', 'alta', 'critica')),
+  status TEXT NOT NULL DEFAULT 'pendiente' CHECK (status IN ('pendiente', 'asignado', 'en_progreso', 'resuelto', 'cerrado')),
+  
+  -- Usuario que reporta
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  user_name TEXT NOT NULL,
+  user_email TEXT NOT NULL,
+  user_phone TEXT,
+  
+  -- Experto asignado
+  assigned_expert_id UUID REFERENCES public.experts(id) ON DELETE SET NULL,
+  assigned_expert_name TEXT,
+  assigned_at TIMESTAMP WITH TIME ZONE,
+  
+  -- Operador que asignó
+  assigned_by_id UUID REFERENCES public.operators(id) ON DELETE SET NULL,
+  
+  -- Detalles adicionales
+  location TEXT,
+  service_provider TEXT,
+  
+  -- Timestamps
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  resolved_at TIMESTAMP WITH TIME ZONE,
+  closed_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Índices para tickets
+CREATE INDEX idx_tickets_user_id ON public.tickets(user_id);
+CREATE INDEX idx_tickets_expert_id ON public.tickets(assigned_expert_id);
+CREATE INDEX idx_tickets_status ON public.tickets(status);
+CREATE INDEX idx_tickets_priority ON public.tickets(priority);
+CREATE INDEX idx_tickets_problem_type ON public.tickets(problem_type);
+CREATE INDEX idx_tickets_created_at ON public.tickets(created_at DESC);
+
+-- ============================================
+-- TABLA: messages (chat)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_id UUID NOT NULL REFERENCES public.tickets(id) ON DELETE CASCADE,
+  sender_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  sender_name TEXT NOT NULL,
+  sender_role TEXT NOT NULL CHECK (sender_role IN ('usuario', 'experto', 'operador')),
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Índices para messages
+CREATE INDEX idx_messages_ticket_id ON public.messages(ticket_id);
+CREATE INDEX idx_messages_created_at ON public.messages(created_at);
+
+-- ============================================
+-- TABLA: ticket_activities (historial)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.ticket_activities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_id UUID NOT NULL REFERENCES public.tickets(id) ON DELETE CASCADE,
+  action TEXT NOT NULL,
+  performed_by_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  performed_by_name TEXT NOT NULL,
+  details TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Índices para ticket_activities
+CREATE INDEX idx_activities_ticket_id ON public.ticket_activities(ticket_id);
+CREATE INDEX idx_activities_created_at ON public.ticket_activities(created_at DESC);
+```
+
+---
+
+## 📋 Migración 2: Row Level Security (RLS)
+
+```sql
+-- ============================================
+-- HABILITAR RLS EN TODAS LAS TABLAS
+-- ============================================
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.experts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.operators ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ticket_activities ENABLE ROW LEVEL SECURITY;
+
+-- ============================================
+-- POLÍTICAS PARA PROFILES
+-- ============================================
+
+-- Usuarios pueden ver su propio perfil
+CREATE POLICY "Users can view own profile"
+  ON public.profiles FOR SELECT
+  USING (auth.uid() = id);
+
+-- Usuarios pueden actualizar su propio perfil
+CREATE POLICY "Users can update own profile"
+  ON public.profiles FOR UPDATE
+  USING (auth.uid() = id);
+
+-- Operadores y expertos pueden ver todos los perfiles
+CREATE POLICY "Operators and experts can view all profiles"
+  ON public.profiles FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid()
+      AND role IN ('operador', 'experto')
+    )
+  );
+
+-- ============================================
+-- POLÍTICAS PARA EXPERTS
+-- ============================================
+
+-- Expertos pueden ver su propio perfil
+CREATE POLICY "Experts can view own profile"
+  ON public.experts FOR SELECT
+  USING (auth.uid() = id);
+
+-- Expertos pueden actualizar su propio perfil
+CREATE POLICY "Experts can update own profile"
+  ON public.experts FOR UPDATE
+  USING (auth.uid() = id);
+
+-- Operadores pueden ver todos los expertos
+CREATE POLICY "Operators can view all experts"
+  ON public.experts FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'operador'
+    )
+  );
+
+-- ============================================
+-- POLÍTICAS PARA OPERATORS
+-- ============================================
+
+-- Operadores pueden ver su propio perfil
+CREATE POLICY "Operators can view own profile"
+  ON public.operators FOR SELECT
+  USING (auth.uid() = id);
+
+-- Operadores pueden actualizar su propio perfil
+CREATE POLICY "Operators can update own profile"
+  ON public.operators FOR UPDATE
+  USING (auth.uid() = id);
+
+-- ============================================
+-- POLÍTICAS PARA TICKETS
+-- ============================================
+
+-- Usuarios pueden ver sus propios tickets
+CREATE POLICY "Users can view own tickets"
+  ON public.tickets FOR SELECT
+  USING (user_id = auth.uid());
+
+-- Usuarios pueden crear tickets
+CREATE POLICY "Users can create tickets"
+  ON public.tickets FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
+-- Expertos pueden ver tickets asignados a ellos
+CREATE POLICY "Experts can view assigned tickets"
+  ON public.tickets FOR SELECT
+  USING (assigned_expert_id = auth.uid());
+
+-- Expertos pueden actualizar tickets asignados
+CREATE POLICY "Experts can update assigned tickets"
+  ON public.tickets FOR UPDATE
+  USING (assigned_expert_id = auth.uid());
+
+-- Operadores pueden ver todos los tickets
+CREATE POLICY "Operators can view all tickets"
+  ON public.tickets FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'operador'
+    )
+  );
+
+-- Operadores pueden actualizar todos los tickets
+CREATE POLICY "Operators can update all tickets"
+  ON public.tickets FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'operador'
+    )
+  );
+
+-- ============================================
+-- POLÍTICAS PARA MESSAGES
+-- ============================================
+
+-- Usuarios pueden ver mensajes de sus tickets
+CREATE POLICY "Users can view messages of own tickets"
+  ON public.messages FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.tickets
+      WHERE id = ticket_id AND user_id = auth.uid()
+    )
+  );
+
+-- Expertos pueden ver mensajes de tickets asignados
+CREATE POLICY "Experts can view messages of assigned tickets"
+  ON public.messages FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.tickets
+      WHERE id = ticket_id AND assigned_expert_id = auth.uid()
+    )
+  );
+
+-- Usuarios y expertos pueden crear mensajes en sus tickets
+CREATE POLICY "Users and experts can create messages"
+  ON public.messages FOR INSERT
+  WITH CHECK (
+    sender_id = auth.uid() AND (
+      EXISTS (
+        SELECT 1 FROM public.tickets
+        WHERE id = ticket_id AND (
+          user_id = auth.uid() OR assigned_expert_id = auth.uid()
+        )
+      )
+    )
+  );
+
+-- Operadores pueden ver todos los mensajes
+CREATE POLICY "Operators can view all messages"
+  ON public.messages FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'operador'
+    )
+  );
+
+-- ============================================
+-- POLÍTICAS PARA TICKET_ACTIVITIES
+-- ============================================
+
+-- Usuarios pueden ver actividades de sus tickets
+CREATE POLICY "Users can view activities of own tickets"
+  ON public.ticket_activities FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.tickets
+      WHERE id = ticket_id AND user_id = auth.uid()
+    )
+  );
+
+-- Expertos pueden ver actividades de tickets asignados
+CREATE POLICY "Experts can view activities of assigned tickets"
+  ON public.ticket_activities FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.tickets
+      WHERE id = ticket_id AND assigned_expert_id = auth.uid()
+    )
+  );
+
+-- Operadores pueden ver todas las actividades
+CREATE POLICY "Operators can view all activities"
+  ON public.ticket_activities FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'operador'
+    )
+  );
+
+-- Todos los usuarios autenticados pueden crear actividades
+CREATE POLICY "Authenticated users can create activities"
+  ON public.ticket_activities FOR INSERT
+  WITH CHECK (auth.uid() = performed_by_id);
+```
+
+---
+
+## 📋 Migración 3: Triggers y Funciones
+
+```sql
+-- ============================================
+-- FUNCIÓN: Actualizar updated_at automáticamente
+-- ============================================
+
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Triggers para actualizar updated_at
+CREATE TRIGGER update_profiles_updated_at
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_experts_updated_at
+  BEFORE UPDATE ON public.experts
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_operators_updated_at
+  BEFORE UPDATE ON public.operators
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_tickets_updated_at
+  BEFORE UPDATE ON public.tickets
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- FUNCIÓN: Crear perfil automáticamente al registrar
+-- ============================================
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, name, phone, role)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'name', 'Usuario'),
+    COALESCE(NEW.raw_user_meta_data->>'phone', ''),
+    COALESCE(NEW.raw_user_meta_data->>'role', 'usuario')
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger para crear perfil automáticamente
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
+
+-- ============================================
+-- FUNCIÓN: Actualizar contadores de expertos
+-- ============================================
+
+CREATE OR REPLACE FUNCTION update_expert_ticket_count()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Si se asigna un ticket a un experto
+  IF NEW.assigned_expert_id IS NOT NULL AND 
+     (OLD.assigned_expert_id IS NULL OR OLD.assigned_expert_id != NEW.assigned_expert_id) THEN
+    
+    -- Incrementar contador del nuevo experto
+    UPDATE public.experts
+    SET active_tickets = active_tickets + 1
+    WHERE id = NEW.assigned_expert_id;
+    
+    -- Decrementar contador del experto anterior (si había)
+    IF OLD.assigned_expert_id IS NOT NULL THEN
+      UPDATE public.experts
+      SET active_tickets = GREATEST(active_tickets - 1, 0)
+      WHERE id = OLD.assigned_expert_id;
+    END IF;
+  END IF;
+  
+  -- Si se resuelve el ticket
+  IF NEW.status IN ('resuelto', 'cerrado') AND OLD.status NOT IN ('resuelto', 'cerrado') THEN
+    IF NEW.assigned_expert_id IS NOT NULL THEN
+      UPDATE public.experts
+      SET 
+        active_tickets = GREATEST(active_tickets - 1, 0),
+        total_resolved = total_resolved + CASE WHEN NEW.status = 'resuelto' THEN 1 ELSE 0 END
+      WHERE id = NEW.assigned_expert_id;
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_expert_counters
+  AFTER UPDATE ON public.tickets
+  FOR EACH ROW
+  EXECUTE FUNCTION update_expert_ticket_count();
+```
+
+---
+
+## 📋 Migración 4: Funciones de Utilidad
+
+```sql
+-- ============================================
+-- FUNCIÓN: Obtener estadísticas por rol
+-- ============================================
+
+CREATE OR REPLACE FUNCTION get_user_stats(user_id UUID)
+RETURNS JSON AS $$
+DECLARE
+  user_role TEXT;
+  stats JSON;
+BEGIN
+  -- Obtener rol del usuario
+  SELECT role INTO user_role FROM public.profiles WHERE id = user_id;
+  
+  IF user_role = 'operador' THEN
+    -- Estadísticas para operador
+    SELECT json_build_object(
+      'totalTickets', COUNT(*),
+      'pendientes', COUNT(*) FILTER (WHERE status = 'pendiente'),
+      'asignados', COUNT(*) FILTER (WHERE status = 'asignado'),
+      'enProgreso', COUNT(*) FILTER (WHERE status = 'en_progreso'),
+      'resueltos', COUNT(*) FILTER (WHERE status = 'resuelto'),
+      'cerrados', COUNT(*) FILTER (WHERE status = 'cerrado')
+    ) INTO stats
+    FROM public.tickets;
+    
+  ELSIF user_role = 'experto' THEN
+    -- Estadísticas para experto
+    SELECT json_build_object(
+      'activeTickets', active_tickets,
+      'totalResolved', total_resolved,
+      'enProgreso', (SELECT COUNT(*) FROM public.tickets WHERE assigned_expert_id = user_id AND status = 'en_progreso'),
+      'resueltos', (SELECT COUNT(*) FROM public.tickets WHERE assigned_expert_id = user_id AND status = 'resuelto')
+    ) INTO stats
+    FROM public.experts
+    WHERE id = user_id;
+    
+  ELSE
+    -- Estadísticas para usuario normal
+    SELECT json_build_object(
+      'totalTickets', COUNT(*),
+      'pendientes', COUNT(*) FILTER (WHERE status = 'pendiente'),
+      'enProgreso', COUNT(*) FILTER (WHERE status IN ('asignado', 'en_progreso')),
+      'resueltos', COUNT(*) FILTER (WHERE status = 'resuelto')
+    ) INTO stats
+    FROM public.tickets
+    WHERE user_id = user_id;
+  END IF;
+  
+  RETURN stats;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+---
+
+## ✅ Verificación de Migraciones
+
+Después de ejecutar todas las migraciones, verifica que todo está correcto:
+
+```sql
+-- Verificar tablas creadas
+SELECT table_name 
+FROM information_schema.tables 
+WHERE table_schema = 'public'
+ORDER BY table_name;
+
+-- Verificar políticas RLS
+SELECT tablename, policyname 
+FROM pg_policies 
+WHERE schemaname = 'public'
+ORDER BY tablename, policyname;
+
+-- Verificar triggers
+SELECT trigger_name, event_object_table 
+FROM information_schema.triggers 
+WHERE trigger_schema = 'public'
+ORDER BY event_object_table;
+```
+
+---
+
+## 🔄 Rollback (por si necesitas deshacer)
+
+```sql
+-- ADVERTENCIA: Esto borrará todos los datos
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS update_expert_counters ON public.tickets;
+DROP TRIGGER IF EXISTS update_tickets_updated_at ON public.tickets;
+DROP TRIGGER IF EXISTS update_operators_updated_at ON public.operators;
+DROP TRIGGER IF EXISTS update_experts_updated_at ON public.experts;
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
+
+DROP FUNCTION IF EXISTS get_user_stats(UUID);
+DROP FUNCTION IF EXISTS update_expert_ticket_count();
+DROP FUNCTION IF EXISTS update_updated_at_column();
+DROP FUNCTION IF EXISTS public.handle_new_user();
+
+DROP TABLE IF EXISTS public.ticket_activities CASCADE;
+DROP TABLE IF EXISTS public.messages CASCADE;
+DROP TABLE IF EXISTS public.tickets CASCADE;
+DROP TABLE IF EXISTS public.operators CASCADE;
+DROP TABLE IF EXISTS public.experts CASCADE;
+DROP TABLE IF EXISTS public.profiles CASCADE;
+```
+
+---
+
+## 📝 Notas Importantes
+
+1. **Orden de ejecución**: Ejecuta las migraciones en el orden mostrado (1 → 2 → 3 → 4)
+2. **RLS habilitado**: Las políticas de seguridad protegen los datos según el rol
+3. **Triggers automáticos**: Los contadores y timestamps se actualizan automáticamente
+4. **Backup**: Haz backup antes de ejecutar en producción
+5. **Testing**: Prueba en desarrollo antes de aplicar en producción
+
+---
+
+**¡Migraciones listas! Ejecuta esto en Supabase Dashboard antes de continuar.** 🚀
