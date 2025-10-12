@@ -5,13 +5,57 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { toast } from 'sonner@2.0.3';
 import { ProblemType, TicketPriority } from '../../types';
+import { createTicket } from '../../utils/api';
+import { Loader2, MapPin, Building } from 'lucide-react';
 
 interface CreateTicketFormProps {
   onSuccess: () => void;
 }
+
+const PROBLEM_TYPES: { value: ProblemType; label: string; category: string }[] = [
+  // Internet
+  { value: 'internet_sin_conexion', label: 'Sin conexión', category: 'Internet' },
+  { value: 'internet_lento', label: 'Baja velocidad', category: 'Internet' },
+  { value: 'internet_intermitente', label: 'Conexión intermitente', category: 'Internet' },
+  
+  // Router
+  { value: 'router_apagado', label: 'No enciende', category: 'Router' },
+  { value: 'router_configuracion', label: 'Problema de configuración', category: 'Router' },
+  { value: 'router_wifi_debil', label: 'WiFi débil', category: 'Router' },
+  { value: 'router_reinicio_constante', label: 'Se reinicia constantemente', category: 'Router' },
+  
+  // Fibra
+  { value: 'fibra_sin_señal', label: 'Sin señal', category: 'Fibra Óptica' },
+  { value: 'fibra_ont_apagado', label: 'ONT sin luz', category: 'Fibra Óptica' },
+  
+  // ADSL
+  { value: 'adsl_desconexiones', label: 'Desconexiones frecuentes', category: 'ADSL' },
+  { value: 'adsl_lento', label: 'Baja velocidad', category: 'ADSL' },
+  
+  // Teléfono
+  { value: 'telefono_sin_linea', label: 'Sin línea', category: 'Teléfono' },
+  { value: 'telefono_ruido', label: 'Ruido/Interferencias', category: 'Teléfono' },
+  { value: 'telefono_no_recibe', label: 'No recibe llamadas', category: 'Teléfono' },
+  { value: 'telefono_no_realiza', label: 'No puede realizar llamadas', category: 'Teléfono' },
+  
+  // Cableado
+  { value: 'cableado_dañado', label: 'Cable dañado', category: 'Cableado' },
+  { value: 'cableado_instalacion', label: 'Instalación nueva', category: 'Cableado' },
+  
+  // Otro
+  { value: 'otro', label: 'Otro problema', category: 'Otro' }
+];
+
+// Agrupar por categoría
+const GROUPED_PROBLEMS = PROBLEM_TYPES.reduce((acc, problem) => {
+  if (!acc[problem.category]) {
+    acc[problem.category] = [];
+  }
+  acc[problem.category].push(problem);
+  return acc;
+}, {} as Record<string, typeof PROBLEM_TYPES>);
 
 export function CreateTicketForm({ onSuccess }: CreateTicketFormProps) {
   const [isLoading, setIsLoading] = useState(false);
@@ -20,22 +64,24 @@ export function CreateTicketForm({ onSuccess }: CreateTicketFormProps) {
     description: '',
     problemType: '' as ProblemType,
     priority: 'media' as TicketPriority,
-    location: '',
-    serviceProvider: '',
-    contactName: '',
-    contactEmail: '',
-    contactPhone: ''
+    city: '',
+    address: '',
+    serviceProvider: ''
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!formData.city || !formData.address) {
+      toast.error('Por favor completa la ciudad y dirección del problema');
+      return;
+    }
+
     setIsLoading(true);
 
-    // Simulación de envío
-    setTimeout(() => {
-      const ticketId = `TK-${Math.random().toString(36).substr(2, 3).toUpperCase()}`;
-      toast.success(`Ticket ${ticketId} creado exitosamente. Te contactaremos pronto.`);
-      setIsLoading(false);
+    try {
+      await createTicket(formData);
+      toast.success('Ticket creado exitosamente. Te contactaremos pronto.');
       onSuccess();
       
       // Reset form
@@ -44,13 +90,15 @@ export function CreateTicketForm({ onSuccess }: CreateTicketFormProps) {
         description: '',
         problemType: '' as ProblemType,
         priority: 'media',
-        location: '',
-        serviceProvider: '',
-        contactName: '',
-        contactEmail: '',
-        contactPhone: ''
+        city: '',
+        address: '',
+        serviceProvider: ''
       });
-    }, 1500);
+    } catch (error: any) {
+      toast.error(error.message || 'Error al crear el ticket');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -68,18 +116,18 @@ export function CreateTicketForm({ onSuccess }: CreateTicketFormProps) {
             {/* Información del Problema */}
             <div className="space-y-4">
               <div>
-                <Label htmlFor="title">Título del Problema</Label>
+                <Label htmlFor="title">Título del Problema *</Label>
                 <Input
                   id="title"
                   value={formData.title}
                   onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                  placeholder="Describe brevemente tu problema"
+                  placeholder="Ej: Router sin conexión desde ayer"
                   required
                 />
               </div>
 
               <div>
-                <Label htmlFor="description">Descripción Detallada</Label>
+                <Label htmlFor="description">Descripción Detallada *</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
@@ -91,113 +139,108 @@ export function CreateTicketForm({ onSuccess }: CreateTicketFormProps) {
               </div>
 
               <div>
-                <Label>Tipo de Problema</Label>
-                <RadioGroup
-                  value={formData.problemType}
+                <Label htmlFor="problemType">Tipo de Problema *</Label>
+                <Select 
+                  value={formData.problemType} 
                   onValueChange={(value) => setFormData(prev => ({ ...prev, problemType: value as ProblemType }))}
-                  className="mt-2"
+                  required
                 >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="internet" id="internet" />
-                    <Label htmlFor="internet">Solo Internet</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="telefono" id="telefono" />
-                    <Label htmlFor="telefono">Solo Teléfono</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="ambos" id="ambos" />
-                    <Label htmlFor="ambos">Internet y Teléfono</Label>
-                  </div>
-                </RadioGroup>
+                  <SelectTrigger id="problemType">
+                    <SelectValue placeholder="Selecciona el tipo de problema" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(GROUPED_PROBLEMS).map(([category, problems]) => (
+                      <div key={category}>
+                        <div className="px-2 py-1.5 font-medium text-sm text-muted-foreground">
+                          {category}
+                        </div>
+                        {problems.map((problem) => (
+                          <SelectItem key={problem.value} value={problem.value}>
+                            {problem.label}
+                          </SelectItem>
+                        ))}
+                      </div>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
-                <Label htmlFor="priority">Prioridad</Label>
-                <Select value={formData.priority} onValueChange={(value) => setFormData(prev => ({ ...prev, priority: value as TicketPriority }))}>
-                  <SelectTrigger>
+                <Label htmlFor="priority">Prioridad *</Label>
+                <Select 
+                  value={formData.priority} 
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, priority: value as TicketPriority }))}
+                >
+                  <SelectTrigger id="priority">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="baja">Baja - Puedo esperar</SelectItem>
-                    <SelectItem value="media">Media - Normal</SelectItem>
+                    <SelectItem value="baja">Baja - Puede esperar</SelectItem>
+                    <SelectItem value="media">Media - Atención normal</SelectItem>
                     <SelectItem value="alta">Alta - Urgente</SelectItem>
-                    <SelectItem value="critica">Crítica - Emergencia</SelectItem>
+                    <SelectItem value="critica">Crítica - Sin servicio</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            {/* Información de Ubicación y Servicio */}
-            <div className="space-y-4">
+            {/* Ubicación del Problema */}
+            <div className="space-y-4 pt-4 border-t">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <MapPin className="h-4 w-4" />
+                <span className="text-sm font-medium">Ubicación del Problema</span>
+              </div>
+
               <div>
-                <Label htmlFor="location">Ubicación</Label>
+                <Label htmlFor="city">Ciudad *</Label>
                 <Input
-                  id="location"
-                  value={formData.location}
-                  onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
-                  placeholder="Colonia, Ciudad, Estado"
+                  id="city"
+                  value={formData.city}
+                  onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+                  placeholder="Ej: Madrid, Barcelona, Valencia"
                   required
                 />
+              </div>
+
+              <div>
+                <Label htmlFor="address">Dirección Completa *</Label>
+                <Input
+                  id="address"
+                  value={formData.address}
+                  onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                  placeholder="Calle, número, piso, puerta"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Información Adicional */}
+            <div className="space-y-4 pt-4 border-t">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Building className="h-4 w-4" />
+                <span className="text-sm font-medium">Información Adicional (Opcional)</span>
               </div>
 
               <div>
                 <Label htmlFor="serviceProvider">Proveedor de Servicio</Label>
-                <Select value={formData.serviceProvider} onValueChange={(value) => setFormData(prev => ({ ...prev, serviceProvider: value }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona tu proveedor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="telmex">Telmex</SelectItem>
-                    <SelectItem value="megacable">Megacable</SelectItem>
-                    <SelectItem value="izzi">Izzi</SelectItem>
-                    <SelectItem value="totalplay">Totalplay</SelectItem>
-                    <SelectItem value="at&t">AT&T</SelectItem>
-                    <SelectItem value="otro">Otro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Información de Contacto */}
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="contactName">Nombre Completo</Label>
                 <Input
-                  id="contactName"
-                  value={formData.contactName}
-                  onChange={(e) => setFormData(prev => ({ ...prev, contactName: e.target.value }))}
-                  placeholder="Tu nombre completo"
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="contactEmail">Email</Label>
-                <Input
-                  id="contactEmail"
-                  type="email"
-                  value={formData.contactEmail}
-                  onChange={(e) => setFormData(prev => ({ ...prev, contactEmail: e.target.value }))}
-                  placeholder="tu@email.com"
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="contactPhone">Teléfono</Label>
-                <Input
-                  id="contactPhone"
-                  value={formData.contactPhone}
-                  onChange={(e) => setFormData(prev => ({ ...prev, contactPhone: e.target.value }))}
-                  placeholder="+52 555 123 4567"
-                  required
+                  id="serviceProvider"
+                  value={formData.serviceProvider}
+                  onChange={(e) => setFormData(prev => ({ ...prev, serviceProvider: e.target.value }))}
+                  placeholder="Ej: Movistar, Vodafone, Orange"
                 />
               </div>
             </div>
 
-            <Button type="submit" disabled={isLoading} className="w-full">
-              {isLoading ? 'Enviando...' : 'Crear Ticket de Soporte'}
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creando ticket...
+                </>
+              ) : (
+                'Crear Ticket'
+              )}
             </Button>
           </form>
         </CardContent>

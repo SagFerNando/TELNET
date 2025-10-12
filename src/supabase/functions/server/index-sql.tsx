@@ -98,6 +98,7 @@ app.post("/make-server-370afec0/auth/signup", async (c) => {
         email,
         name,
         phone: phone || '',
+        city: body.city || null,
         role
       });
 
@@ -214,19 +215,20 @@ app.post("/make-server-370afec0/tickets", async (c) => {
     }
 
     const body = await c.req.json();
-    const { title, description, problemType, priority, location, serviceProvider } = body;
+    const { title, description, problemType, priority, city, address, serviceProvider } = body;
 
-    if (!title || !description || !problemType || !priority) {
-      return c.json({ error: "Faltan campos requeridos" }, 400);
+    if (!title || !description || !problemType || !priority || !city || !address) {
+      return c.json({ error: "Faltan campos requeridos (título, descripción, tipo, prioridad, ciudad, dirección)" }, 400);
     }
 
-    // Obtener datos del usuario
+    // Obtener datos del usuario (solo para el log de actividad)
     const { data: profile } = await supabase
       .from('profiles')
-      .select('name, email, phone')
+      .select('name')
       .eq('id', user.id)
       .single();
 
+    // NORMALIZADO: Solo guardamos el user_id, los datos se obtienen mediante JOIN
     const { data: ticket, error } = await supabase
       .from('tickets')
       .insert({
@@ -235,12 +237,10 @@ app.post("/make-server-370afec0/tickets", async (c) => {
         problem_type: problemType,
         priority,
         status: 'pendiente',
-        user_id: user.id,
-        user_name: profile?.name || 'Usuario',
-        user_email: profile?.email || user.email,
-        user_phone: profile?.phone || '',
-        location: location || '',
-        service_provider: serviceProvider || ''
+        user_id: user.id,  // Solo ID - datos normalizados
+        city,              // Ciudad donde está el problema
+        address,           // Dirección del problema
+        service_provider: serviceProvider || null
       })
       .select()
       .single();
@@ -282,8 +282,10 @@ app.get("/make-server-370afec0/tickets", async (c) => {
     const status = c.req.query("status");
     const problemType = c.req.query("problemType");
     const priority = c.req.query("priority");
+    const city = c.req.query("city");
 
-    let query = supabase.from('tickets').select('*');
+    // Usar vista normalizada con JOINs
+    let query = supabase.from('tickets_with_details').select('*');
 
     // Filtrar según el rol
     if (profile?.role === 'usuario') {
@@ -297,6 +299,7 @@ app.get("/make-server-370afec0/tickets", async (c) => {
     if (status) query = query.eq('status', status);
     if (problemType) query = query.eq('problem_type', problemType);
     if (priority) query = query.eq('priority', priority);
+    if (city) query = query.eq('city', city);
 
     // Ordenar por fecha de creación
     query = query.order('created_at', { ascending: false });
@@ -325,8 +328,9 @@ app.get("/make-server-370afec0/tickets/:id", async (c) => {
 
     const ticketId = c.req.param("id");
 
+    // Usar vista normalizada con datos de usuario y experto
     const { data: ticket, error } = await supabase
-      .from('tickets')
+      .from('tickets_with_details')
       .select('*')
       .eq('id', ticketId)
       .single();
@@ -367,25 +371,25 @@ app.post("/make-server-370afec0/tickets/:id/assign", async (c) => {
       return c.json({ error: "Se requiere expertId" }, 400);
     }
 
-    // Obtener datos del experto
-    const { data: expertProfile } = await supabase
-      .from('profiles')
-      .select('name')
-      .eq('id', expertId)
-      .single();
-
-    // Actualizar ticket
+    // NORMALIZADO: Solo guardamos IDs, no nombres
+    // Los nombres se obtienen mediante JOIN en la vista
     const { data: ticket, error } = await supabase
       .from('tickets')
       .update({
         assigned_expert_id: expertId,
-        assigned_expert_name: expertProfile?.name || 'Experto',
         assigned_by_id: user.id,
         assigned_at: new Date().toISOString(),
         status: 'asignado'
       })
       .eq('id', ticketId)
       .select()
+      .single();
+    
+    // Obtener datos del experto solo para el log de actividad
+    const { data: expertProfile } = await supabase
+      .from('profiles')
+      .select('name')
+      .eq('id', expertId)
       .single();
 
     if (error) {

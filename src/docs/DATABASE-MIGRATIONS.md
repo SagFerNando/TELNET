@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   phone TEXT,
+  city TEXT,  -- Ciudad de origen del usuario
   role TEXT NOT NULL CHECK (role IN ('usuario', 'operador', 'experto')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- Índices para profiles
 CREATE INDEX idx_profiles_role ON public.profiles(role);
 CREATE INDEX idx_profiles_email ON public.profiles(email);
+CREATE INDEX idx_profiles_city ON public.profiles(city);
 
 -- ============================================
 -- TABLA: experts (datos adicionales de expertos)
@@ -52,6 +54,8 @@ CREATE TABLE IF NOT EXISTS public.experts (
 -- Índices para experts
 CREATE INDEX idx_experts_specializations ON public.experts USING GIN(specializations);
 
+COMMENT ON COLUMN public.experts.specializations IS 'Especializaciones del experto: Internet, Router, Fibra Óptica, ADSL, Teléfono Fijo, VoIP, Cableado, Redes, etc.';
+
 -- ============================================
 -- TABLA: operators (datos adicionales de operadores)
 -- ============================================
@@ -66,33 +70,37 @@ CREATE TABLE IF NOT EXISTS public.operators (
 );
 
 -- ============================================
--- TABLA: tickets
+-- TABLA: tickets (NORMALIZADA - sin duplicación de datos)
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.tickets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title TEXT NOT NULL,
   description TEXT NOT NULL,
-  problem_type TEXT NOT NULL CHECK (problem_type IN ('internet', 'telefono', 'ambos')),
+  
+  -- Tipos de problemas específicos
+  problem_type TEXT NOT NULL CHECK (problem_type IN (
+    'internet_sin_conexion', 'internet_lento', 'internet_intermitente',
+    'router_apagado', 'router_configuracion', 'router_wifi_debil', 'router_reinicio_constante',
+    'fibra_sin_señal', 'fibra_ont_apagado',
+    'adsl_desconexiones', 'adsl_lento',
+    'telefono_sin_linea', 'telefono_ruido', 'telefono_no_recibe', 'telefono_no_realiza',
+    'cableado_dañado', 'cableado_instalacion',
+    'otro'
+  )),
+  
   priority TEXT NOT NULL CHECK (priority IN ('baja', 'media', 'alta', 'critica')),
   status TEXT NOT NULL DEFAULT 'pendiente' CHECK (status IN ('pendiente', 'asignado', 'en_progreso', 'resuelto', 'cerrado')),
   
-  -- Usuario que reporta
+  -- Referencias normalizadas (solo IDs, los datos vienen de las tablas relacionadas)
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  user_name TEXT NOT NULL,
-  user_email TEXT NOT NULL,
-  user_phone TEXT,
-  
-  -- Experto asignado
   assigned_expert_id UUID REFERENCES public.experts(id) ON DELETE SET NULL,
-  assigned_expert_name TEXT,
   assigned_at TIMESTAMP WITH TIME ZONE,
-  
-  -- Operador que asignó
   assigned_by_id UUID REFERENCES public.operators(id) ON DELETE SET NULL,
   
-  -- Detalles adicionales
-  location TEXT,
-  service_provider TEXT,
+  -- Ubicación del problema (NO del usuario)
+  city TEXT NOT NULL,           -- Ciudad donde está el problema
+  address TEXT NOT NULL,        -- Dirección completa del problema
+  service_provider TEXT,        -- Proveedor de servicio
   
   -- Timestamps
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -107,7 +115,12 @@ CREATE INDEX idx_tickets_expert_id ON public.tickets(assigned_expert_id);
 CREATE INDEX idx_tickets_status ON public.tickets(status);
 CREATE INDEX idx_tickets_priority ON public.tickets(priority);
 CREATE INDEX idx_tickets_problem_type ON public.tickets(problem_type);
+CREATE INDEX idx_tickets_city ON public.tickets(city);
 CREATE INDEX idx_tickets_created_at ON public.tickets(created_at DESC);
+
+COMMENT ON TABLE public.tickets IS 'Tabla normalizada de tickets - Los datos de usuario y experto se obtienen mediante JOIN con profiles y experts';
+COMMENT ON COLUMN public.tickets.city IS 'Ciudad donde está ubicado el problema (no necesariamente la ciudad del usuario)';
+COMMENT ON COLUMN public.tickets.address IS 'Dirección completa donde está el problema';
 
 -- ============================================
 -- TABLA: messages (chat)
@@ -398,19 +411,20 @@ CREATE TRIGGER update_tickets_updated_at
 -- ============================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER AS $
 BEGIN
-  INSERT INTO public.profiles (id, email, name, phone, role)
+  INSERT INTO public.profiles (id, email, name, phone, city, role)
   VALUES (
     NEW.id,
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'name', 'Usuario'),
     COALESCE(NEW.raw_user_meta_data->>'phone', ''),
+    NEW.raw_user_meta_data->>'city',
     COALESCE(NEW.raw_user_meta_data->>'role', 'usuario')
   );
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Trigger para crear perfil automáticamente
 CREATE TRIGGER on_auth_user_created
@@ -519,6 +533,139 @@ BEGIN
   RETURN stats;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+---
+
+## 📋 Migración 5: Vistas para Consultas Normalizadas
+
+```sql
+-- ============================================
+-- VISTA: tickets_with_details
+-- Une tickets con información de usuario y experto
+-- ============================================
+
+CREATE OR REPLACE VIEW public.tickets_with_details AS
+SELECT 
+  t.id,
+  t.title,
+  t.description,
+  t.problem_type,
+  t.priority,
+  t.status,
+  
+  -- Datos del usuario (normalizados desde profiles)
+  t.user_id,
+  p_user.name as user_name,
+  p_user.email as user_email,
+  p_user.phone as user_phone,
+  p_user.city as user_city,
+  
+  -- Datos del experto asignado (normalizados)
+  t.assigned_expert_id,
+  p_expert.name as assigned_expert_name,
+  p_expert.email as assigned_expert_email,
+  p_expert.city as assigned_expert_city,
+  e.specializations as assigned_expert_specializations,
+  t.assigned_at,
+  
+  -- Datos del operador que asignó
+  t.assigned_by_id,
+  p_operator.name as assigned_by_name,
+  
+  -- Ubicación del problema
+  t.city,
+  t.address,
+  t.service_provider,
+  
+  -- Timestamps
+  t.created_at,
+  t.updated_at,
+  t.resolved_at,
+  t.closed_at
+  
+FROM public.tickets t
+LEFT JOIN public.profiles p_user ON t.user_id = p_user.id
+LEFT JOIN public.profiles p_expert ON t.assigned_expert_id = p_expert.id
+LEFT JOIN public.experts e ON t.assigned_expert_id = e.id
+LEFT JOIN public.profiles p_operator ON t.assigned_by_id = p_operator.id;
+
+-- Comentario sobre la vista
+COMMENT ON VIEW public.tickets_with_details IS 'Vista desnormalizada de tickets con todos los datos de usuario y experto mediante JOINs';
+
+-- ============================================
+-- VISTA: experts_with_profile
+-- Une expertos con sus datos de perfil
+-- ============================================
+
+CREATE OR REPLACE VIEW public.experts_with_profile AS
+SELECT 
+  e.id,
+  p.name,
+  p.email,
+  p.phone,
+  p.city,
+  e.specializations,
+  e.certifications,
+  e.experience_years,
+  e.department,
+  e.active_tickets,
+  e.total_resolved,
+  e.created_at,
+  e.updated_at
+FROM public.experts e
+JOIN public.profiles p ON e.id = p.id;
+
+-- ============================================
+-- VISTA: operators_with_profile
+-- Une operadores con sus datos de perfil
+-- ============================================
+
+CREATE OR REPLACE VIEW public.operators_with_profile AS
+SELECT 
+  o.id,
+  p.name,
+  p.email,
+  p.phone,
+  p.city,
+  o.department,
+  o.shift,
+  o.supervisor_id,
+  o.tickets_assigned,
+  o.created_at,
+  o.updated_at
+FROM public.operators o
+JOIN public.profiles p ON o.id = p.id;
+
+-- ============================================
+-- FUNCIÓN: Obtener etiquetas legibles de problem_type
+-- ============================================
+
+CREATE OR REPLACE FUNCTION get_problem_type_label(problem_type TEXT)
+RETURNS TEXT AS $
+BEGIN
+  RETURN CASE problem_type
+    WHEN 'internet_sin_conexion' THEN 'Internet - Sin conexión'
+    WHEN 'internet_lento' THEN 'Internet - Baja velocidad'
+    WHEN 'internet_intermitente' THEN 'Internet - Intermitente'
+    WHEN 'router_apagado' THEN 'Router - No enciende'
+    WHEN 'router_configuracion' THEN 'Router - Problema de configuración'
+    WHEN 'router_wifi_debil' THEN 'Router - WiFi débil'
+    WHEN 'router_reinicio_constante' THEN 'Router - Se reinicia constantemente'
+    WHEN 'fibra_sin_señal' THEN 'Fibra - Sin señal'
+    WHEN 'fibra_ont_apagado' THEN 'Fibra - ONT sin luz'
+    WHEN 'adsl_desconexiones' THEN 'ADSL - Desconexiones frecuentes'
+    WHEN 'adsl_lento' THEN 'ADSL - Baja velocidad'
+    WHEN 'telefono_sin_linea' THEN 'Teléfono - Sin línea'
+    WHEN 'telefono_ruido' THEN 'Teléfono - Ruido/Interferencias'
+    WHEN 'telefono_no_recibe' THEN 'Teléfono - No recibe llamadas'
+    WHEN 'telefono_no_realiza' THEN 'Teléfono - No puede realizar llamadas'
+    WHEN 'cableado_dañado' THEN 'Cableado - Cable dañado'
+    WHEN 'cableado_instalacion' THEN 'Cableado - Instalación nueva'
+    ELSE 'Otro problema'
+  END;
+END;
+$ LANGUAGE plpgsql IMMUTABLE;
 ```
 
 ---

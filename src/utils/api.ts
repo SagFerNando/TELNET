@@ -13,9 +13,10 @@ import { Ticket, Expert, Message, TicketActivity } from '../types';
 export interface CreateTicketData {
   title: string;
   description: string;
-  problemType: 'internet' | 'telefono' | 'ambos';
+  problemType: string;  // ProblemType - ampliado
   priority: 'baja' | 'media' | 'alta' | 'critica';
-  location: string;
+  city: string;         // Ciudad donde está el problema
+  address: string;      // Dirección del problema
   serviceProvider?: string;
 }
 
@@ -23,6 +24,7 @@ export interface TicketFilters {
   status?: string;
   problemType?: string;
   priority?: string;
+  city?: string;  // Filtrar por ciudad
 }
 
 /**
@@ -44,6 +46,7 @@ export async function getTickets(filters?: TicketFilters): Promise<Ticket[]> {
   if (filters?.status) params.append('status', filters.status);
   if (filters?.problemType) params.append('problemType', filters.problemType);
   if (filters?.priority) params.append('priority', filters.priority);
+  if (filters?.city) params.append('city', filters.city);
 
   const queryString = params.toString();
   const endpoint = queryString ? `/tickets?${queryString}` : '/tickets';

@@ -2,7 +2,6 @@ import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import * as kv from "./kv_store.tsx";
 
 const app = new Hono();
 
@@ -15,7 +14,7 @@ const supabase = createClient(
 // Enable logger
 app.use("*", logger(console.log));
 
-// Enable CORS for all routes and methods
+// Enable CORS
 app.use(
   "/*",
   cors({
@@ -27,7 +26,7 @@ app.use(
   })
 );
 
-// Middleware para verificar autenticación (opcional según la ruta)
+// Middleware para verificar autenticación
 async function verifyAuth(authHeader: string | null) {
   if (!authHeader) return null;
   
@@ -48,7 +47,20 @@ async function verifyAuth(authHeader: string | null) {
 app.post("/make-server-370afec0/auth/signup", async (c) => {
   try {
     const body = await c.req.json();
-    const { email, password, name, phone, role } = body;
+    const { 
+      email, 
+      password, 
+      name, 
+      phone, 
+      city,
+      role,
+      // Campos adicionales
+      specializations,
+      certifications,
+      experienceYears,
+      department,
+      shift
+    } = body;
 
     if (!email || !password || !name || !role) {
       return c.json({ error: "Faltan campos requeridos" }, 400);
@@ -60,51 +72,91 @@ app.post("/make-server-370afec0/auth/signup", async (c) => {
     }
 
     // Crear usuario en Supabase Auth
-    const { data, error } = await supabase.auth.admin.createUser({
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
       user_metadata: { 
         name, 
         phone: phone || "",
+        city: city || null,
         role 
       },
-      // Confirmar email automáticamente (no hay servidor de email configurado)
       email_confirm: true,
     });
 
-    if (error) {
-      console.log("Error al crear usuario:", error);
-      return c.json({ error: error.message }, 400);
+    if (authError) {
+      console.log("Error al crear usuario en Auth:", authError);
+      return c.json({ error: authError.message }, 400);
     }
 
-    // Guardar información adicional del usuario en KV store
-    const userId = data.user.id;
-    await kv.set(`user:${userId}`, {
-      id: userId,
-      name,
-      email,
-      phone: phone || "",
-      role,
-      createdAt: new Date().toISOString(),
-    });
+    const userId = authData.user.id;
 
-    // Si es experto, crear perfil de experto
-    if (role === "experto") {
-      await kv.set(`expert:${userId}`, {
+    // Crear perfil en tabla profiles (se crea automáticamente con trigger)
+    // Pero asegurarnos de que los datos estén correctos
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert({
         id: userId,
-        name,
         email,
-        specializations: body.specializations || [],
-        activeTickets: 0,
-        totalResolved: 0,
+        name,
+        phone: phone || '',
+        city: city || null,
+        role
       });
+
+    if (profileError) {
+      console.log("Error al crear perfil:", profileError);
+      return c.json({ error: "Error al crear perfil" }, 500);
+    }
+
+    // Si es experto, crear registro en tabla experts
+    if (role === 'experto') {
+      if (!specializations || specializations.length === 0) {
+        return c.json({ error: "Los expertos deben tener al menos una especialización" }, 400);
+      }
+
+      const { error: expertError } = await supabase
+        .from('experts')
+        .insert({
+          id: userId,
+          specializations: specializations || [],
+          certifications: certifications || [],
+          experience_years: experienceYears || 0,
+          department: department || null
+        });
+
+      if (expertError) {
+        console.log("Error al crear experto:", expertError);
+        return c.json({ error: "Error al crear experto" }, 500);
+      }
+    }
+
+    // Si es operador, crear registro en tabla operators
+    if (role === 'operador') {
+      if (!shift) {
+        return c.json({ error: "Los operadores deben especificar un turno" }, 400);
+      }
+
+      const { error: operatorError } = await supabase
+        .from('operators')
+        .insert({
+          id: userId,
+          department: department || null,
+          shift: shift
+        });
+
+      if (operatorError) {
+        console.log("Error al crear operador:", operatorError);
+        return c.json({ error: "Error al crear operador" }, 500);
+      }
     }
 
     return c.json({ 
       success: true, 
-      user: data.user,
-      message: "Usuario registrado exitosamente" 
+      message: "Usuario registrado exitosamente",
+      userId 
     });
+
   } catch (error) {
     console.log("Error en signup:", error);
     return c.json({ error: "Error al registrar usuario" }, 500);
@@ -119,14 +171,40 @@ app.get("/make-server-370afec0/auth/me", async (c) => {
       return c.json({ error: "No autorizado" }, 401);
     }
 
-    const userData = await kv.get(`user:${user.id}`);
-    
-    return c.json({ 
-      id: user.id,
-      email: user.email,
-      ...user.user_metadata,
-      ...userData
-    });
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    if (error) {
+      console.log("Error al obtener perfil:", error);
+      return c.json({ error: "Error al obtener perfil" }, 500);
+    }
+
+    // Si es experto, obtener datos adicionales
+    if (profile?.role === 'experto') {
+      const { data: expertData } = await supabase
+        .from('experts')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      return c.json({ ...profile, ...expertData });
+    }
+
+    // Si es operador, obtener datos adicionales
+    if (profile?.role === 'operador') {
+      const { data: operatorData } = await supabase
+        .from('operators')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      return c.json({ ...profile, ...operatorData });
+    }
+
+    return c.json(profile);
   } catch (error) {
     console.log("Error al obtener usuario:", error);
     return c.json({ error: "Error al obtener información del usuario" }, 500);
@@ -146,48 +224,48 @@ app.post("/make-server-370afec0/tickets", async (c) => {
     }
 
     const body = await c.req.json();
-    const { title, description, problemType, priority, location, serviceProvider } = body;
+    const { title, description, problemType, priority, city, address, serviceProvider } = body;
 
-    if (!title || !description || !problemType || !priority) {
-      return c.json({ error: "Faltan campos requeridos" }, 400);
+    if (!title || !description || !problemType || !priority || !city || !address) {
+      return c.json({ error: "Faltan campos requeridos (título, descripción, tipo, prioridad, ciudad, dirección)" }, 400);
     }
 
-    const ticketId = crypto.randomUUID();
-    const userData = await kv.get(`user:${user.id}`);
-    
-    const ticket = {
-      id: ticketId,
-      title,
-      description,
-      problemType,
-      priority,
-      status: "pendiente",
-      userId: user.id,
-      userName: userData?.name || user.user_metadata.name || "Usuario",
-      userEmail: user.email || "",
-      userPhone: userData?.phone || user.user_metadata.phone || "",
-      location: location || "",
-      serviceProvider: serviceProvider || "",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    // Obtener datos del usuario (solo para el log de actividad)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('name')
+      .eq('id', user.id)
+      .single();
 
-    await kv.set(`ticket:${ticketId}`, ticket);
-    
-    // Agregar ticket a la lista de tickets del usuario
-    const userTicketsKey = `user_tickets:${user.id}`;
-    const userTickets = await kv.get(userTicketsKey) || [];
-    userTickets.push(ticketId);
-    await kv.set(userTicketsKey, userTickets);
+    // NORMALIZADO: Solo guardamos el user_id, los datos se obtienen mediante JOIN
+    const { data: ticket, error } = await supabase
+      .from('tickets')
+      .insert({
+        title,
+        description,
+        problem_type: problemType,
+        priority,
+        status: 'pendiente',
+        user_id: user.id,  // Solo ID - datos normalizados
+        city,              // Ciudad donde está el problema
+        address,           // Dirección del problema
+        service_provider: serviceProvider || null
+      })
+      .select()
+      .single();
 
-    // Agregar a lista de todos los tickets
-    const allTicketsKey = "all_tickets";
-    const allTickets = await kv.get(allTicketsKey) || [];
-    allTickets.push(ticketId);
-    await kv.set(allTicketsKey, allTickets);
+    if (error) {
+      console.log("Error al crear ticket:", error);
+      return c.json({ error: "Error al crear ticket: " + error.message }, 500);
+    }
 
-    // Registrar actividad
-    await addTicketActivity(ticketId, "Ticket creado", user.id, userData?.name || "Usuario");
+    // Crear actividad
+    await supabase.from('ticket_activities').insert({
+      ticket_id: ticket.id,
+      action: 'Ticket creado',
+      performed_by_id: user.id,
+      performed_by_name: profile?.name || 'Usuario'
+    });
 
     return c.json({ success: true, ticket });
   } catch (error) {
@@ -204,51 +282,45 @@ app.get("/make-server-370afec0/tickets", async (c) => {
       return c.json({ error: "No autorizado" }, 401);
     }
 
-    const userData = await kv.get(`user:${user.id}`);
-    const userRole = userData?.role || user.user_metadata.role;
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
 
     const status = c.req.query("status");
     const problemType = c.req.query("problemType");
     const priority = c.req.query("priority");
+    const city = c.req.query("city");
 
-    let ticketIds: string[] = [];
+    // Usar vista normalizada con JOINs
+    let query = supabase.from('tickets_with_details').select('*');
 
-    // Obtener tickets según el rol
-    if (userRole === "usuario") {
-      // Usuarios solo ven sus propios tickets
-      ticketIds = await kv.get(`user_tickets:${user.id}`) || [];
-    } else if (userRole === "experto") {
-      // Expertos ven tickets asignados a ellos
-      ticketIds = await kv.get(`expert_tickets:${user.id}`) || [];
-    } else {
-      // Operadores ven todos los tickets
-      ticketIds = await kv.get("all_tickets") || [];
+    // Filtrar según el rol
+    if (profile?.role === 'usuario') {
+      query = query.eq('user_id', user.id);
+    } else if (profile?.role === 'experto') {
+      query = query.eq('assigned_expert_id', user.id);
+    }
+    // Los operadores ven todos los tickets
+
+    // Aplicar filtros
+    if (status) query = query.eq('status', status);
+    if (problemType) query = query.eq('problem_type', problemType);
+    if (priority) query = query.eq('priority', priority);
+    if (city) query = query.eq('city', city);
+
+    // Ordenar por fecha de creación
+    query = query.order('created_at', { ascending: false });
+
+    const { data: tickets, error } = await query;
+
+    if (error) {
+      console.log("Error al obtener tickets:", error);
+      return c.json({ error: "Error al obtener tickets: " + error.message }, 500);
     }
 
-    // Obtener datos de todos los tickets
-    const tickets = await Promise.all(
-      ticketIds.map(async (id) => await kv.get(`ticket:${id}`))
-    );
-
-    // Filtrar tickets nulos y aplicar filtros
-    let filteredTickets = tickets.filter((t) => t !== null);
-
-    if (status) {
-      filteredTickets = filteredTickets.filter((t) => t.status === status);
-    }
-    if (problemType) {
-      filteredTickets = filteredTickets.filter((t) => t.problemType === problemType);
-    }
-    if (priority) {
-      filteredTickets = filteredTickets.filter((t) => t.priority === priority);
-    }
-
-    // Ordenar por fecha de creación (más recientes primero)
-    filteredTickets.sort((a, b) => 
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-
-    return c.json({ tickets: filteredTickets });
+    return c.json({ tickets: tickets || [] });
   } catch (error) {
     console.log("Error al obtener tickets:", error);
     return c.json({ error: "Error al obtener tickets" }, 500);
@@ -264,9 +336,15 @@ app.get("/make-server-370afec0/tickets/:id", async (c) => {
     }
 
     const ticketId = c.req.param("id");
-    const ticket = await kv.get(`ticket:${ticketId}`);
 
-    if (!ticket) {
+    // Usar vista normalizada con datos de usuario y experto
+    const { data: ticket, error } = await supabase
+      .from('tickets_with_details')
+      .select('*')
+      .eq('id', ticketId)
+      .single();
+
+    if (error || !ticket) {
       return c.json({ error: "Ticket no encontrado" }, 404);
     }
 
@@ -285,11 +363,13 @@ app.post("/make-server-370afec0/tickets/:id/assign", async (c) => {
       return c.json({ error: "No autorizado" }, 401);
     }
 
-    const userData = await kv.get(`user:${user.id}`);
-    const userRole = userData?.role || user.user_metadata.role;
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, name')
+      .eq('id', user.id)
+      .single();
 
-    // Solo operadores pueden asignar tickets
-    if (userRole !== "operador") {
+    if (profile?.role !== 'operador') {
       return c.json({ error: "No tienes permiso para asignar tickets" }, 403);
     }
 
@@ -300,43 +380,40 @@ app.post("/make-server-370afec0/tickets/:id/assign", async (c) => {
       return c.json({ error: "Se requiere expertId" }, 400);
     }
 
-    const ticket = await kv.get(`ticket:${ticketId}`);
-    if (!ticket) {
-      return c.json({ error: "Ticket no encontrado" }, 404);
+    // NORMALIZADO: Solo guardamos IDs, no nombres
+    // Los nombres se obtienen mediante JOIN en la vista
+    const { data: ticket, error } = await supabase
+      .from('tickets')
+      .update({
+        assigned_expert_id: expertId,
+        assigned_by_id: user.id,
+        assigned_at: new Date().toISOString(),
+        status: 'asignado'
+      })
+      .eq('id', ticketId)
+      .select()
+      .single();
+    
+    // Obtener datos del experto solo para el log de actividad
+    const { data: expertProfile } = await supabase
+      .from('profiles')
+      .select('name')
+      .eq('id', expertId)
+      .single();
+
+    if (error) {
+      console.log("Error al asignar ticket:", error);
+      return c.json({ error: "Error al asignar ticket" }, 500);
     }
 
-    const expert = await kv.get(`expert:${expertId}`);
-    if (!expert) {
-      return c.json({ error: "Experto no encontrado" }, 404);
-    }
-
-    // Actualizar ticket
-    ticket.assignedExpertId = expertId;
-    ticket.assignedExpertName = expert.name;
-    ticket.status = "asignado";
-    ticket.updatedAt = new Date().toISOString();
-    await kv.set(`ticket:${ticketId}`, ticket);
-
-    // Agregar ticket a la lista del experto
-    const expertTicketsKey = `expert_tickets:${expertId}`;
-    const expertTickets = await kv.get(expertTicketsKey) || [];
-    if (!expertTickets.includes(ticketId)) {
-      expertTickets.push(ticketId);
-      await kv.set(expertTicketsKey, expertTickets);
-    }
-
-    // Actualizar contador de tickets activos del experto
-    expert.activeTickets = (expert.activeTickets || 0) + 1;
-    await kv.set(`expert:${expertId}`, expert);
-
-    // Registrar actividad
-    await addTicketActivity(
-      ticketId, 
-      "Ticket asignado", 
-      user.id, 
-      userData?.name || "Operador",
-      `Asignado a ${expert.name}`
-    );
+    // Crear actividad
+    await supabase.from('ticket_activities').insert({
+      ticket_id: ticketId,
+      action: 'Ticket asignado',
+      performed_by_id: user.id,
+      performed_by_name: profile?.name || 'Operador',
+      details: `Asignado a ${expertProfile?.name}`
+    });
 
     return c.json({ success: true, ticket });
   } catch (error) {
@@ -360,36 +437,43 @@ app.put("/make-server-370afec0/tickets/:id/status", async (c) => {
       return c.json({ error: "Se requiere status" }, 400);
     }
 
-    const ticket = await kv.get(`ticket:${ticketId}`);
-    if (!ticket) {
-      return c.json({ error: "Ticket no encontrado" }, 404);
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('name')
+      .eq('id', user.id)
+      .single();
+
+    const updateData: any = { status };
+
+    // Si el estado es resuelto, agregar timestamp
+    if (status === 'resuelto') {
+      updateData.resolved_at = new Date().toISOString();
     }
 
-    const previousStatus = ticket.status;
-    ticket.status = status;
-    ticket.updatedAt = new Date().toISOString();
-    await kv.set(`ticket:${ticketId}`, ticket);
-
-    // Si el ticket se marca como resuelto/cerrado, actualizar estadísticas del experto
-    if ((status === "resuelto" || status === "cerrado") && ticket.assignedExpertId) {
-      const expert = await kv.get(`expert:${ticket.assignedExpertId}`);
-      if (expert) {
-        expert.activeTickets = Math.max((expert.activeTickets || 0) - 1, 0);
-        if (status === "resuelto") {
-          expert.totalResolved = (expert.totalResolved || 0) + 1;
-        }
-        await kv.set(`expert:${ticket.assignedExpertId}`, expert);
-      }
+    // Si el estado es cerrado, agregar timestamp
+    if (status === 'cerrado') {
+      updateData.closed_at = new Date().toISOString();
     }
 
-    const userData = await kv.get(`user:${user.id}`);
-    await addTicketActivity(
-      ticketId,
-      "Estado actualizado",
-      user.id,
-      userData?.name || "Usuario",
-      `De "${previousStatus}" a "${status}"`
-    );
+    const { data: ticket, error } = await supabase
+      .from('tickets')
+      .update(updateData)
+      .eq('id', ticketId)
+      .select()
+      .single();
+
+    if (error) {
+      console.log("Error al actualizar estado:", error);
+      return c.json({ error: "Error al actualizar estado" }, 500);
+    }
+
+    // Crear actividad
+    await supabase.from('ticket_activities').insert({
+      ticket_id: ticketId,
+      action: `Estado cambiado a ${status}`,
+      performed_by_id: user.id,
+      performed_by_name: profile?.name || 'Usuario'
+    });
 
     return c.json({ success: true, ticket });
   } catch (error) {
@@ -398,8 +482,36 @@ app.put("/make-server-370afec0/tickets/:id/status", async (c) => {
   }
 });
 
+// Obtener actividades de un ticket
+app.get("/make-server-370afec0/tickets/:id/activities", async (c) => {
+  try {
+    const user = await verifyAuth(c.req.header("Authorization"));
+    if (!user) {
+      return c.json({ error: "No autorizado" }, 401);
+    }
+
+    const ticketId = c.req.param("id");
+
+    const { data: activities, error } = await supabase
+      .from('ticket_activities')
+      .select('*')
+      .eq('ticket_id', ticketId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.log("Error al obtener actividades:", error);
+      return c.json({ error: "Error al obtener actividades" }, 500);
+    }
+
+    return c.json({ activities: activities || [] });
+  } catch (error) {
+    console.log("Error al obtener actividades:", error);
+    return c.json({ error: "Error al obtener actividades" }, 500);
+  }
+});
+
 // ============================================
-// MENSAJES DE CHAT
+// MENSAJES
 // ============================================
 
 // Enviar mensaje
@@ -410,39 +522,34 @@ app.post("/make-server-370afec0/messages", async (c) => {
       return c.json({ error: "No autorizado" }, 401);
     }
 
-    const body = await c.req.json();
-    const { ticketId, content } = body;
+    const { ticketId, content } = await c.req.json();
 
     if (!ticketId || !content) {
       return c.json({ error: "Faltan campos requeridos" }, 400);
     }
 
-    const ticket = await kv.get(`ticket:${ticketId}`);
-    if (!ticket) {
-      return c.json({ error: "Ticket no encontrado" }, 404);
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('name, role')
+      .eq('id', user.id)
+      .single();
+
+    const { data: message, error } = await supabase
+      .from('messages')
+      .insert({
+        ticket_id: ticketId,
+        sender_id: user.id,
+        sender_name: profile?.name || 'Usuario',
+        sender_role: profile?.role || 'usuario',
+        content
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.log("Error al enviar mensaje:", error);
+      return c.json({ error: "Error al enviar mensaje" }, 500);
     }
-
-    const userData = await kv.get(`user:${user.id}`);
-    const senderRole = userData?.role || user.user_metadata.role;
-
-    const messageId = crypto.randomUUID();
-    const message = {
-      id: messageId,
-      ticketId,
-      senderId: user.id,
-      senderName: userData?.name || user.user_metadata.name || "Usuario",
-      senderRole,
-      content,
-      timestamp: new Date().toISOString(),
-    };
-
-    await kv.set(`message:${messageId}`, message);
-
-    // Agregar mensaje a la lista de mensajes del ticket
-    const ticketMessagesKey = `ticket_messages:${ticketId}`;
-    const ticketMessages = await kv.get(ticketMessagesKey) || [];
-    ticketMessages.push(messageId);
-    await kv.set(ticketMessagesKey, ticketMessages);
 
     return c.json({ success: true, message });
   } catch (error) {
@@ -460,25 +567,19 @@ app.get("/make-server-370afec0/messages/:ticketId", async (c) => {
     }
 
     const ticketId = c.req.param("ticketId");
-    const ticket = await kv.get(`ticket:${ticketId}`);
-    
-    if (!ticket) {
-      return c.json({ error: "Ticket no encontrado" }, 404);
+
+    const { data: messages, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('ticket_id', ticketId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.log("Error al obtener mensajes:", error);
+      return c.json({ error: "Error al obtener mensajes" }, 500);
     }
 
-    const messageIds = await kv.get(`ticket_messages:${ticketId}`) || [];
-    const messages = await Promise.all(
-      messageIds.map(async (id: string) => await kv.get(`message:${id}`))
-    );
-
-    // Filtrar mensajes nulos y ordenar por timestamp
-    const sortedMessages = messages
-      .filter((m) => m !== null)
-      .sort((a, b) => 
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      );
-
-    return c.json({ messages: sortedMessages });
+    return c.json({ messages: messages || [] });
   } catch (error) {
     console.log("Error al obtener mensajes:", error);
     return c.json({ error: "Error al obtener mensajes" }, 500);
@@ -489,7 +590,7 @@ app.get("/make-server-370afec0/messages/:ticketId", async (c) => {
 // EXPERTOS
 // ============================================
 
-// Obtener lista de expertos
+// Obtener todos los expertos
 app.get("/make-server-370afec0/experts", async (c) => {
   try {
     const user = await verifyAuth(c.req.header("Authorization"));
@@ -497,11 +598,17 @@ app.get("/make-server-370afec0/experts", async (c) => {
       return c.json({ error: "No autorizado" }, 401);
     }
 
-    // Obtener todos los expertos
-    const allKeys = await kv.getByPrefix("expert:");
-    const experts = allKeys.map(item => item.value).filter(e => e !== null);
+    const { data: experts, error } = await supabase
+      .from('experts_with_profile')
+      .select('*')
+      .order('active_tickets', { ascending: true });
 
-    return c.json({ experts });
+    if (error) {
+      console.log("Error al obtener expertos:", error);
+      return c.json({ error: "Error al obtener expertos" }, 500);
+    }
+
+    return c.json({ experts: experts || [] });
   } catch (error) {
     console.log("Error al obtener expertos:", error);
     return c.json({ error: "Error al obtener expertos" }, 500);
@@ -509,68 +616,9 @@ app.get("/make-server-370afec0/experts", async (c) => {
 });
 
 // ============================================
-// ACTIVIDADES
-// ============================================
-
-// Función auxiliar para registrar actividades
-async function addTicketActivity(
-  ticketId: string,
-  action: string,
-  userId: string,
-  performedBy: string,
-  details?: string
-) {
-  const activityId = crypto.randomUUID();
-  const activity = {
-    id: activityId,
-    ticketId,
-    action,
-    performedBy,
-    timestamp: new Date().toISOString(),
-    details: details || "",
-  };
-
-  await kv.set(`activity:${activityId}`, activity);
-
-  const ticketActivitiesKey = `ticket_activities:${ticketId}`;
-  const activities = await kv.get(ticketActivitiesKey) || [];
-  activities.push(activityId);
-  await kv.set(ticketActivitiesKey, activities);
-}
-
-// Obtener actividades de un ticket
-app.get("/make-server-370afec0/tickets/:id/activities", async (c) => {
-  try {
-    const user = await verifyAuth(c.req.header("Authorization"));
-    if (!user) {
-      return c.json({ error: "No autorizado" }, 401);
-    }
-
-    const ticketId = c.req.param("id");
-    const activityIds = await kv.get(`ticket_activities:${ticketId}`) || [];
-    
-    const activities = await Promise.all(
-      activityIds.map(async (id: string) => await kv.get(`activity:${id}`))
-    );
-
-    const sortedActivities = activities
-      .filter((a) => a !== null)
-      .sort((a, b) => 
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
-
-    return c.json({ activities: sortedActivities });
-  } catch (error) {
-    console.log("Error al obtener actividades:", error);
-    return c.json({ error: "Error al obtener actividades" }, 500);
-  }
-});
-
-// ============================================
 // ESTADÍSTICAS
 // ============================================
 
-// Obtener estadísticas del dashboard
 app.get("/make-server-370afec0/stats", async (c) => {
   try {
     const user = await verifyAuth(c.req.header("Authorization"));
@@ -578,56 +626,61 @@ app.get("/make-server-370afec0/stats", async (c) => {
       return c.json({ error: "No autorizado" }, 401);
     }
 
-    const userData = await kv.get(`user:${user.id}`);
-    const userRole = userData?.role || user.user_metadata.role;
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
 
     let stats = {};
 
-    if (userRole === "operador") {
-      const allTicketIds = await kv.get("all_tickets") || [];
-      const allTickets = await Promise.all(
-        allTicketIds.map(async (id: string) => await kv.get(`ticket:${id}`))
-      );
+    if (profile?.role === 'operador') {
+      // Estadísticas para operador
+      const { data: tickets } = await supabase
+        .from('tickets')
+        .select('status');
 
-      const validTickets = allTickets.filter(t => t !== null);
-
-      stats = {
-        totalTickets: validTickets.length,
-        pendientes: validTickets.filter(t => t.status === "pendiente").length,
-        asignados: validTickets.filter(t => t.status === "asignado").length,
-        enProgreso: validTickets.filter(t => t.status === "en_progreso").length,
-        resueltos: validTickets.filter(t => t.status === "resuelto").length,
-        cerrados: validTickets.filter(t => t.status === "cerrado").length,
+      const counts = {
+        totalTickets: tickets?.length || 0,
+        pendientes: tickets?.filter(t => t.status === 'pendiente').length || 0,
+        asignados: tickets?.filter(t => t.status === 'asignado').length || 0,
+        enProgreso: tickets?.filter(t => t.status === 'en_progreso').length || 0,
+        resueltos: tickets?.filter(t => t.status === 'resuelto').length || 0,
+        cerrados: tickets?.filter(t => t.status === 'cerrado').length || 0
       };
-    } else if (userRole === "experto") {
-      const expertTicketIds = await kv.get(`expert_tickets:${user.id}`) || [];
-      const expertTickets = await Promise.all(
-        expertTicketIds.map(async (id: string) => await kv.get(`ticket:${id}`))
-      );
 
-      const validTickets = expertTickets.filter(t => t !== null);
-      const expert = await kv.get(`expert:${user.id}`);
+      stats = counts;
+    } else if (profile?.role === 'experto') {
+      // Estadísticas para experto
+      const { data: expert } = await supabase
+        .from('experts')
+        .select('active_tickets, total_resolved')
+        .eq('id', user.id)
+        .single();
+
+      const { data: tickets } = await supabase
+        .from('tickets')
+        .select('status')
+        .eq('assigned_expert_id', user.id);
 
       stats = {
-        activeTickets: expert?.activeTickets || 0,
-        totalResolved: expert?.totalResolved || 0,
-        enProgreso: validTickets.filter(t => t.status === "en_progreso").length,
-        resueltos: validTickets.filter(t => t.status === "resuelto").length,
+        activeTickets: expert?.active_tickets || 0,
+        totalResolved: expert?.total_resolved || 0,
+        enProgreso: tickets?.filter(t => t.status === 'en_progreso').length || 0,
+        resueltos: tickets?.filter(t => t.status === 'resuelto').length || 0
       };
     } else {
-      // Usuario
-      const userTicketIds = await kv.get(`user_tickets:${user.id}`) || [];
-      const userTickets = await Promise.all(
-        userTicketIds.map(async (id: string) => await kv.get(`ticket:${id}`))
-      );
-
-      const validTickets = userTickets.filter(t => t !== null);
+      // Estadísticas para usuario
+      const { data: tickets } = await supabase
+        .from('tickets')
+        .select('status')
+        .eq('user_id', user.id);
 
       stats = {
-        totalTickets: validTickets.length,
-        pendientes: validTickets.filter(t => t.status === "pendiente").length,
-        enProgreso: validTickets.filter(t => t.status === "en_progreso").length,
-        resueltos: validTickets.filter(t => t.status === "resuelto").length,
+        totalTickets: tickets?.length || 0,
+        pendientes: tickets?.filter(t => t.status === 'pendiente').length || 0,
+        enProgreso: tickets?.filter(t => ['asignado', 'en_progreso'].includes(t.status)).length || 0,
+        resueltos: tickets?.filter(t => t.status === 'resuelto').length || 0
       };
     }
 
@@ -638,9 +691,17 @@ app.get("/make-server-370afec0/stats", async (c) => {
   }
 });
 
-// Health check endpoint
+// ============================================
+// HEALTH CHECK
+// ============================================
+
 app.get("/make-server-370afec0/health", (c) => {
-  return c.json({ status: "ok" });
+  return c.json({ 
+    status: "ok", 
+    database: "PostgreSQL",
+    timestamp: new Date().toISOString()
+  });
 });
 
+// Start server
 Deno.serve(app.fetch);

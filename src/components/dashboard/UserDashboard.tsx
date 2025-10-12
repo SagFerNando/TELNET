@@ -1,26 +1,59 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CreateTicketForm } from '../user/CreateTicketForm';
 import { TicketCard } from '../shared/TicketCard';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { mockTickets } from '../../data/mockData';
-import { Plus, Ticket, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { Plus, Ticket, Clock, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { getTickets, getStats } from '../../utils/api';
+import { Ticket as TicketType } from '../../types';
+import { toast } from 'sonner@2.0.3';
+
+interface UserStats {
+  totalTickets: number;
+  pendientes: number;
+  enProgreso: number;
+  resueltos: number;
+}
 
 export function UserDashboard() {
   const [showCreateForm, setShowCreateForm] = useState(false);
-  
-  // En un sistema real, estos serían los tickets del usuario actual
-  const userTickets = mockTickets.filter(ticket => 
-    ['user1', 'user2', 'user3', 'user4'].includes(ticket.userId)
-  );
+  const [tickets, setTickets] = useState<TicketType[]>([]);
+  const [stats, setStats] = useState<UserStats>({
+    totalTickets: 0,
+    pendientes: 0,
+    enProgreso: 0,
+    resueltos: 0
+  });
+  const [loading, setLoading] = useState(true);
 
-  const ticketStats = {
-    total: userTickets.length,
-    pending: userTickets.filter(t => t.status === 'pendiente').length,
-    inProgress: userTickets.filter(t => ['asignado', 'en_progreso'].includes(t.status)).length,
-    resolved: userTickets.filter(t => ['resuelto', 'cerrado'].includes(t.status)).length
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      const [ticketsData, statsData] = await Promise.all([
+        getTickets(),
+        getStats()
+      ]);
+      
+      setTickets(ticketsData);
+      setStats(statsData as UserStats);
+    } catch (error: any) {
+      console.error('Error cargando dashboard:', error);
+      toast.error('Error al cargar los datos: ' + (error.message || 'Error desconocido'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTicketCreated = () => {
+    setShowCreateForm(false);
+    loadDashboardData(); // Recargar datos
+    toast.success('Ticket creado exitosamente');
   };
 
   if (showCreateForm) {
@@ -35,7 +68,18 @@ export function UserDashboard() {
             ← Volver al Dashboard
           </Button>
         </div>
-        <CreateTicketForm onSuccess={() => setShowCreateForm(false)} />
+        <CreateTicketForm onSuccess={handleTicketCreated} />
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="container mx-auto py-6 flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Cargando dashboard...</p>
+        </div>
       </div>
     );
   }
@@ -51,12 +95,12 @@ export function UserDashboard() {
           </p>
         </div>
         <Button onClick={() => setShowCreateForm(true)}>
-          <Plus className="h-4 w-4 mr-2" />
+          <Plus className="mr-2 h-4 w-4" />
           Nuevo Ticket
         </Button>
       </div>
 
-      {/* Stats */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -64,109 +108,131 @@ export function UserDashboard() {
             <Ticket className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl">{ticketStats.total}</div>
+            <div className="text-2xl font-bold">{stats.totalTickets}</div>
+            <p className="text-xs text-muted-foreground">
+              Todos tus reportes
+            </p>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
-            <Clock className="h-4 w-4 text-orange-500" />
+            <AlertCircle className="h-4 w-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl">{ticketStats.pending}</div>
+            <div className="text-2xl font-bold">{stats.pendientes}</div>
+            <p className="text-xs text-muted-foreground">
+              Esperando asignación
+            </p>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">En Proceso</CardTitle>
-            <AlertCircle className="h-4 w-4 text-blue-500" />
+            <CardTitle className="text-sm font-medium">En Progreso</CardTitle>
+            <Clock className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl">{ticketStats.inProgress}</div>
+            <div className="text-2xl font-bold">{stats.enProgreso}</div>
+            <p className="text-xs text-muted-foreground">
+              Siendo atendidos
+            </p>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Resueltos</CardTitle>
             <CheckCircle className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl">{ticketStats.resolved}</div>
+            <div className="text-2xl font-bold">{stats.resueltos}</div>
+            <p className="text-xs text-muted-foreground">
+              Completados
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Tickets List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Mis Tickets</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="all" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="all">Todos</TabsTrigger>
-              <TabsTrigger value="pendiente">Pendientes</TabsTrigger>
-              <TabsTrigger value="proceso">En Proceso</TabsTrigger>
-              <TabsTrigger value="resuelto">Resueltos</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="all" className="space-y-4 mt-6">
-              {userTickets.length === 0 ? (
-                <div className="text-center py-8">
-                  <Ticket className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3>No tienes tickets</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Crea tu primer ticket para reportar un problema
-                  </p>
-                  <Button onClick={() => setShowCreateForm(true)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Crear Ticket
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid gap-4">
-                  {userTickets.map((ticket) => (
-                    <TicketCard key={ticket.id} ticket={ticket} />
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-            
-            <TabsContent value="pendiente" className="space-y-4 mt-6">
-              <div className="grid gap-4">
-                {userTickets
-                  .filter(ticket => ticket.status === 'pendiente')
-                  .map((ticket) => (
-                    <TicketCard key={ticket.id} ticket={ticket} />
-                  ))}
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="proceso" className="space-y-4 mt-6">
-              <div className="grid gap-4">
-                {userTickets
-                  .filter(ticket => ['asignado', 'en_progreso'].includes(ticket.status))
-                  .map((ticket) => (
-                    <TicketCard key={ticket.id} ticket={ticket} />
-                  ))}
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="resuelto" className="space-y-4 mt-6">
-              <div className="grid gap-4">
-                {userTickets
-                  .filter(ticket => ['resuelto', 'cerrado'].includes(ticket.status))
-                  .map((ticket) => (
-                    <TicketCard key={ticket.id} ticket={ticket} />
-                  ))}
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+      {/* Tickets Tabs */}
+      <Tabs defaultValue="all" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="all">
+            Todos ({tickets.length})
+          </TabsTrigger>
+          <TabsTrigger value="pendiente">
+            Pendientes ({tickets.filter(t => t.status === 'pendiente').length})
+          </TabsTrigger>
+          <TabsTrigger value="en_progreso">
+            En Progreso ({tickets.filter(t => ['asignado', 'en_progreso'].includes(t.status)).length})
+          </TabsTrigger>
+          <TabsTrigger value="resuelto">
+            Resueltos ({tickets.filter(t => t.status === 'resuelto').length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="all" className="space-y-4">
+          {tickets.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center">
+                <Ticket className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="font-semibold mb-2">No tienes tickets</h3>
+                <p className="text-muted-foreground mb-4">
+                  Comienza creando tu primer reporte de problema
+                </p>
+                <Button onClick={() => setShowCreateForm(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Crear Primer Ticket
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            tickets.map(ticket => (
+              <TicketCard key={ticket.id} ticket={ticket} />
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="pendiente" className="space-y-4">
+          {tickets.filter(t => t.status === 'pendiente').map(ticket => (
+            <TicketCard key={ticket.id} ticket={ticket} />
+          ))}
+          {tickets.filter(t => t.status === 'pendiente').length === 0 && (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                No hay tickets pendientes
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="en_progreso" className="space-y-4">
+          {tickets.filter(t => ['asignado', 'en_progreso'].includes(t.status)).map(ticket => (
+            <TicketCard key={ticket.id} ticket={ticket} />
+          ))}
+          {tickets.filter(t => ['asignado', 'en_progreso'].includes(t.status)).length === 0 && (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                No hay tickets en progreso
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="resuelto" className="space-y-4">
+          {tickets.filter(t => t.status === 'resuelto').map(ticket => (
+            <TicketCard key={ticket.id} ticket={ticket} />
+          ))}
+          {tickets.filter(t => t.status === 'resuelto').length === 0 && (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                No hay tickets resueltos
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

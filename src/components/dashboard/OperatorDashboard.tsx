@@ -1,62 +1,86 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TicketCard } from '../shared/TicketCard';
 import { AssignTicketDialog } from '../operator/AssignTicketDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { mockTickets, mockExperts } from '../../data/mockData';
-import { Ticket } from '../../types';
-import { Search, Users, Clock, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Ticket, ClipboardList, UserCheck, Clock, CheckCircle, XCircle, Loader2, Search } from 'lucide-react';
+import { getTickets, getStats } from '../../utils/api';
+import { Ticket as TicketType } from '../../types';
+import { toast } from 'sonner@2.0.3';
+
+interface OperatorStats {
+  totalTickets: number;
+  pendientes: number;
+  asignados: number;
+  enProgreso: number;
+  resueltos: number;
+  cerrados: number;
+}
 
 export function OperatorDashboard() {
-  const [tickets, setTickets] = useState(mockTickets);
-  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
-  const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [tickets, setTickets] = useState<TicketType[]>([]);
+  const [stats, setStats] = useState<OperatorStats>({
+    totalTickets: 0,
+    pendientes: 0,
+    asignados: 0,
+    enProgreso: 0,
+    resueltos: 0,
+    cerrados: 0
+  });
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterPriority, setFilterPriority] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState<string>('');
+  const [problemTypeFilter, setProblemTypeFilter] = useState<string>('');
+  const [cityFilter, setCityFilter] = useState<string>('');
 
-  const handleAssignTicket = (ticket: Ticket) => {
-    setSelectedTicket(ticket);
-    setShowAssignDialog(true);
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      const [ticketsData, statsData] = await Promise.all([
+        getTickets(),
+        getStats()
+      ]);
+      
+      setTickets(ticketsData);
+      setStats(statsData as OperatorStats);
+    } catch (error: any) {
+      console.error('Error cargando dashboard:', error);
+      toast.error('Error al cargar los datos: ' + (error.message || 'Error desconocido'));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleTicketAssigned = (ticketId: string, expertId: string) => {
-    const expert = mockExperts.find(e => e.id === expertId);
-    setTickets(prev => prev.map(ticket => 
-      ticket.id === ticketId 
-        ? { 
-            ...ticket, 
-            status: 'asignado' as const,
-            assignedExpertId: expertId,
-            assignedExpertName: expert?.name,
-            updatedAt: new Date().toISOString()
-          }
-        : ticket
-    ));
+  const handleTicketAssigned = () => {
+    loadDashboardData(); // Recargar datos después de asignar
   };
 
-  // Filtrar tickets
   const filteredTickets = tickets.filter(ticket => {
     const matchesSearch = ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         ticket.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         ticket.id.toLowerCase().includes(searchTerm.toLowerCase());
+                         ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesPriority = !priorityFilter || ticket.priority === priorityFilter;
+    const matchesProblemType = !problemTypeFilter || ticket.problemType === problemTypeFilter;
+    const matchesCity = !cityFilter || ticket.city.toLowerCase().includes(cityFilter.toLowerCase());
     
-    const matchesStatus = filterStatus === 'all' || ticket.status === filterStatus;
-    const matchesPriority = filterPriority === 'all' || ticket.priority === filterPriority;
-    
-    return matchesSearch && matchesStatus && matchesPriority;
+    return matchesSearch && matchesPriority && matchesProblemType && matchesCity;
   });
 
-  const ticketStats = {
-    total: tickets.length,
-    pending: tickets.filter(t => t.status === 'pendiente').length,
-    assigned: tickets.filter(t => t.status === 'asignado').length,
-    inProgress: tickets.filter(t => t.status === 'en_progreso').length,
-    resolved: tickets.filter(t => ['resuelto', 'cerrado'].includes(t.status)).length
-  };
+  if (loading) {
+    return (
+      <div className="container mx-auto py-6 flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Cargando dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -64,195 +88,219 @@ export function OperatorDashboard() {
       <div>
         <h1>Panel de Operador</h1>
         <p className="text-muted-foreground">
-          Gestiona y asigna tickets a expertos especializados
+          Gestiona y asigna tickets a expertos técnicos
         </p>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <Ticket className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl">{ticketStats.total}</div>
+            <div className="text-2xl font-bold">{stats.totalTickets}</div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
-            <Clock className="h-4 w-4 text-orange-500" />
+            <ClipboardList className="h-4 w-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl">{ticketStats.pending}</div>
-            <Badge variant="outline" className="mt-1">
-              Requieren asignación
-            </Badge>
+            <div className="text-2xl font-bold">{stats.pendientes}</div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Asignados</CardTitle>
-            <Users className="h-4 w-4 text-blue-500" />
+            <UserCheck className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl">{ticketStats.assigned}</div>
+            <div className="text-2xl font-bold">{stats.asignados}</div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">En Proceso</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-purple-500" />
+            <CardTitle className="text-sm font-medium">En Progreso</CardTitle>
+            <Clock className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl">{ticketStats.inProgress}</div>
+            <div className="text-2xl font-bold">{stats.enProgreso}</div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Resueltos</CardTitle>
             <CheckCircle className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl">{ticketStats.resolved}</div>
+            <div className="text-2xl font-bold">{stats.resueltos}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Cerrados</CardTitle>
+            <XCircle className="h-4 w-4 text-gray-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.cerrados}</div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* Filtros */}
       <Card>
         <CardHeader>
-          <CardTitle>Filtros y Búsqueda</CardTitle>
+          <CardTitle>Filtros</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-4 flex-wrap">
-            <div className="flex-1 min-w-64">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por ticket, usuario..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar tickets..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
             </div>
-            
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los estados</SelectItem>
-                <SelectItem value="pendiente">Pendientes</SelectItem>
-                <SelectItem value="asignado">Asignados</SelectItem>
-                <SelectItem value="en_progreso">En Progreso</SelectItem>
-                <SelectItem value="resuelto">Resueltos</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            <Select value={filterPriority} onValueChange={setFilterPriority}>
-              <SelectTrigger className="w-48">
+
+            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+              <SelectTrigger>
                 <SelectValue placeholder="Prioridad" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todas las prioridades</SelectItem>
-                <SelectItem value="critica">Crítica</SelectItem>
-                <SelectItem value="alta">Alta</SelectItem>
-                <SelectItem value="media">Media</SelectItem>
+                <SelectItem value="">Todas las prioridades</SelectItem>
                 <SelectItem value="baja">Baja</SelectItem>
+                <SelectItem value="media">Media</SelectItem>
+                <SelectItem value="alta">Alta</SelectItem>
+                <SelectItem value="critica">Crítica</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Input
+              placeholder="Ciudad..."
+              value={cityFilter}
+              onChange={(e) => setCityFilter(e.target.value)}
+            />
+
+            <Select value={problemTypeFilter} onValueChange={setProblemTypeFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Tipo de problema" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Todos los tipos</SelectItem>
+                <SelectItem value="internet_sin_conexion">Internet - Sin conexión</SelectItem>
+                <SelectItem value="internet_lento">Internet - Lento</SelectItem>
+                <SelectItem value="router_apagado">Router - No enciende</SelectItem>
+                <SelectItem value="telefono_sin_linea">Teléfono - Sin línea</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </CardContent>
       </Card>
 
-      {/* Tickets */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Tickets ({filteredTickets.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="pending" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="pending">
-                Pendientes ({ticketStats.pending})
-              </TabsTrigger>
-              <TabsTrigger value="assigned">
-                Asignados ({ticketStats.assigned})
-              </TabsTrigger>
-              <TabsTrigger value="progress">
-                En Proceso ({ticketStats.inProgress})
-              </TabsTrigger>
-              <TabsTrigger value="all">Todos</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="pending" className="space-y-4 mt-6">
-              <div className="grid gap-4">
-                {filteredTickets
-                  .filter(ticket => ticket.status === 'pendiente')
-                  .map((ticket) => (
-                    <TicketCard 
-                      key={ticket.id} 
-                      ticket={ticket}
-                      showActions={true}
-                      onAssign={handleAssignTicket}
-                    />
-                  ))}
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="assigned" className="space-y-4 mt-6">
-              <div className="grid gap-4">
-                {filteredTickets
-                  .filter(ticket => ticket.status === 'asignado')
-                  .map((ticket) => (
-                    <TicketCard key={ticket.id} ticket={ticket} />
-                  ))}
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="progress" className="space-y-4 mt-6">
-              <div className="grid gap-4">
-                {filteredTickets
-                  .filter(ticket => ticket.status === 'en_progreso')
-                  .map((ticket) => (
-                    <TicketCard key={ticket.id} ticket={ticket} />
-                  ))}
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="all" className="space-y-4 mt-6">
-              <div className="grid gap-4">
-                {filteredTickets.map((ticket) => (
-                  <TicketCard 
-                    key={ticket.id} 
-                    ticket={ticket}
-                    showActions={ticket.status === 'pendiente'}
-                    onAssign={ticket.status === 'pendiente' ? handleAssignTicket : undefined}
-                  />
-                ))}
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+      {/* Tickets Tabs */}
+      <Tabs defaultValue="all" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="all">
+            Todos ({filteredTickets.length})
+          </TabsTrigger>
+          <TabsTrigger value="pendiente">
+            Pendientes ({filteredTickets.filter(t => t.status === 'pendiente').length})
+          </TabsTrigger>
+          <TabsTrigger value="asignado">
+            Asignados ({filteredTickets.filter(t => t.status === 'asignado').length})
+          </TabsTrigger>
+          <TabsTrigger value="en_progreso">
+            En Progreso ({filteredTickets.filter(t => t.status === 'en_progreso').length})
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Assign Dialog */}
-      <AssignTicketDialog
-        ticket={selectedTicket}
-        isOpen={showAssignDialog}
-        onClose={() => {
-          setShowAssignDialog(false);
-          setSelectedTicket(null);
-        }}
-        onAssign={handleTicketAssigned}
-      />
+        <TabsContent value="all" className="space-y-4">
+          {filteredTickets.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center">
+                <Ticket className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="font-semibold mb-2">No hay tickets</h3>
+                <p className="text-muted-foreground">
+                  {searchTerm || priorityFilter || problemTypeFilter || cityFilter
+                    ? 'No se encontraron tickets con los filtros aplicados'
+                    : 'No hay tickets en el sistema'}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            filteredTickets.map(ticket => (
+              <div key={ticket.id} className="relative">
+                <TicketCard ticket={ticket} />
+                {ticket.status === 'pendiente' && (
+                  <div className="absolute top-4 right-4">
+                    <AssignTicketDialog 
+                      ticketId={ticket.id} 
+                      onAssigned={handleTicketAssigned}
+                    />
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="pendiente" className="space-y-4">
+          {filteredTickets.filter(t => t.status === 'pendiente').map(ticket => (
+            <div key={ticket.id} className="relative">
+              <TicketCard ticket={ticket} />
+              <div className="absolute top-4 right-4">
+                <AssignTicketDialog 
+                  ticketId={ticket.id} 
+                  onAssigned={handleTicketAssigned}
+                />
+              </div>
+            </div>
+          ))}
+          {filteredTickets.filter(t => t.status === 'pendiente').length === 0 && (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                No hay tickets pendientes
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="asignado" className="space-y-4">
+          {filteredTickets.filter(t => t.status === 'asignado').map(ticket => (
+            <TicketCard key={ticket.id} ticket={ticket} />
+          ))}
+          {filteredTickets.filter(t => t.status === 'asignado').length === 0 && (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                No hay tickets asignados
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="en_progreso" className="space-y-4">
+          {filteredTickets.filter(t => t.status === 'en_progreso').map(ticket => (
+            <TicketCard key={ticket.id} ticket={ticket} />
+          ))}
+          {filteredTickets.filter(t => t.status === 'en_progreso').length === 0 && (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                No hay tickets en progreso
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

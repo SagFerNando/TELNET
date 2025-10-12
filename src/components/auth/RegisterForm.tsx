@@ -22,6 +22,7 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [city, setCity] = useState('');
   const [role, setRole] = useState<'usuario' | 'operador' | 'experto'>('usuario');
   
   // Campos para expertos
@@ -100,6 +101,7 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
     try {
       // Preparar datos adicionales según el rol
       const additionalData: any = {
+        city: city || null,
         department: department || null
       };
 
@@ -193,6 +195,25 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                 />
               </div>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="city">Ciudad de Origen</Label>
+            <Input
+              id="city"
+              type="text"
+              placeholder="Ej: Madrid, Barcelona, Valencia"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              disabled={loading}
+            />
+            <p className="text-sm text-muted-foreground">
+              {role === 'experto' 
+                ? 'Ayuda a asignar tickets cercanos a tu ubicación'
+                : role === 'operador'
+                ? 'Para coordinación de equipos regionales'
+                : 'Opcional - Para mejorar el servicio'}
+            </p>
           </div>
 
           <div className="space-y-2">
