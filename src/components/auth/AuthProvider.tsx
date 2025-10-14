@@ -54,17 +54,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadUserData = async (supabaseUser: User) => {
     try {
       const { fetchFromServer } = await import('../../utils/supabase/client');
+      
+      console.log('Cargando datos para usuario:', supabaseUser.email);
+      
       const userData = await fetchFromServer('/auth/me');
+
+      console.log('Datos recibidos del servidor:', userData);
+
+      if (!userData) {
+        throw new Error('No se recibieron datos del usuario');
+      }
 
       setUser({
         id: supabaseUser.id,
         email: supabaseUser.email || '',
-        name: userData.name || supabaseUser.user_metadata.name || '',
+        name: userData.name || supabaseUser.user_metadata.name || 'Usuario',
         phone: userData.phone || supabaseUser.user_metadata.phone || '',
         role: userData.role || supabaseUser.user_metadata.role || 'usuario',
       });
-    } catch (error) {
+
+      console.log('Usuario cargado exitosamente con rol:', userData.role);
+    } catch (error: any) {
       console.error('Error cargando datos del usuario:', error);
+      console.error('Detalles del error:', error.message || error);
+      
+      // Si falla, usar datos de metadata de auth como fallback
+      setUser({
+        id: supabaseUser.id,
+        email: supabaseUser.email || '',
+        name: supabaseUser.user_metadata?.name || 'Usuario',
+        phone: supabaseUser.user_metadata?.phone || '',
+        role: supabaseUser.user_metadata?.role || 'usuario',
+      });
+      
+      console.log('Usando datos de fallback del user_metadata');
     } finally {
       setLoading(false);
     }

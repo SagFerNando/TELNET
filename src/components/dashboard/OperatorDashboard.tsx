@@ -64,8 +64,8 @@ export function OperatorDashboard() {
   const filteredTickets = tickets.filter(ticket => {
     const matchesSearch = ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesPriority = !priorityFilter || ticket.priority === priorityFilter;
-    const matchesProblemType = !problemTypeFilter || ticket.problemType === problemTypeFilter;
+    const matchesPriority = !priorityFilter || priorityFilter === 'all' || ticket.priority === priorityFilter;
+    const matchesProblemType = !problemTypeFilter || problemTypeFilter === 'all' || ticket.problemType === problemTypeFilter;
     const matchesCity = !cityFilter || ticket.city.toLowerCase().includes(cityFilter.toLowerCase());
     
     return matchesSearch && matchesPriority && matchesProblemType && matchesCity;
@@ -174,10 +174,10 @@ export function OperatorDashboard() {
 
             <Select value={priorityFilter} onValueChange={setPriorityFilter}>
               <SelectTrigger>
-                <SelectValue placeholder="Prioridad" />
+                <SelectValue placeholder="Todas las prioridades" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todas las prioridades</SelectItem>
+                <SelectItem value="all">Todas las prioridades</SelectItem>
                 <SelectItem value="baja">Baja</SelectItem>
                 <SelectItem value="media">Media</SelectItem>
                 <SelectItem value="alta">Alta</SelectItem>
@@ -193,14 +193,20 @@ export function OperatorDashboard() {
 
             <Select value={problemTypeFilter} onValueChange={setProblemTypeFilter}>
               <SelectTrigger>
-                <SelectValue placeholder="Tipo de problema" />
+                <SelectValue placeholder="Todos los tipos" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos los tipos</SelectItem>
+                <SelectItem value="all">Todos los tipos</SelectItem>
                 <SelectItem value="internet_sin_conexion">Internet - Sin conexión</SelectItem>
                 <SelectItem value="internet_lento">Internet - Lento</SelectItem>
+                <SelectItem value="internet_intermitente">Internet - Intermitente</SelectItem>
                 <SelectItem value="router_apagado">Router - No enciende</SelectItem>
+                <SelectItem value="router_configuracion">Router - Configuración</SelectItem>
+                <SelectItem value="router_wifi_debil">Router - WiFi débil</SelectItem>
+                <SelectItem value="fibra_sin_señal">Fibra - Sin señal</SelectItem>
                 <SelectItem value="telefono_sin_linea">Teléfono - Sin línea</SelectItem>
+                <SelectItem value="telefono_ruido">Teléfono - Ruido</SelectItem>
+                <SelectItem value="cableado_dañado">Cableado - Dañado</SelectItem>
               </SelectContent>
             </Select>
           </div>

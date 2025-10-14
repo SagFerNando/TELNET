@@ -28,15 +28,42 @@ app.use(
 
 // Middleware para verificar autenticación
 async function verifyAuth(authHeader: string | null) {
-  if (!authHeader) return null;
+  if (!authHeader) {
+    console.log("No se proporcionó header de autorización");
+    return null;
+  }
   
-  const accessToken = authHeader.split(" ")[1];
-  if (!accessToken) return null;
+  const parts = authHeader.split(" ");
+  if (parts.length !== 2 || parts[0] !== "Bearer") {
+    console.log("Formato de header de autorización inválido:", authHeader);
+    return null;
+  }
 
-  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
-  if (error || !user) return null;
+  const accessToken = parts[1];
+  if (!accessToken) {
+    console.log("Token de acceso vacío");
+    return null;
+  }
 
-  return user;
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(accessToken);
+    
+    if (error) {
+      console.log("Error verificando usuario:", error.message);
+      return null;
+    }
+    
+    if (!user) {
+      console.log("Usuario no encontrado con el token");
+      return null;
+    }
+
+    console.log("Usuario autenticado:", user.email, "ID:", user.id);
+    return user;
+  } catch (error: any) {
+    console.log("Excepción verificando auth:", error.message || error);
+    return null;
+  }
 }
 
 // ============================================
@@ -168,46 +195,93 @@ app.get("/make-server-370afec0/auth/me", async (c) => {
   try {
     const user = await verifyAuth(c.req.header("Authorization"));
     if (!user) {
+      console.log("No se pudo verificar autenticación");
       return c.json({ error: "No autorizado" }, 401);
     }
 
-    const { data: profile, error } = await supabase
+    console.log("Obteniendo perfil para usuario:", user.id);
+
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single();
 
-    if (error) {
-      console.log("Error al obtener perfil:", error);
+    if (profileError) {
+      console.log("Error al obtener perfil:", profileError);
+      
+      // Si no existe el perfil, crearlo desde los metadatos de auth
+      if (profileError.code === 'PGRST116') {
+        console.log("Perfil no existe, creando desde metadatos...");
+        const { data: newProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: user.email || '',
+            name: user.user_metadata?.name || 'Usuario',
+            phone: user.user_metadata?.phone || '',
+            city: user.user_metadata?.city || null,
+            role: user.user_metadata?.role || 'usuario'
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.log("Error al crear perfil:", createError);
+          return c.json({ error: "Error al crear perfil de usuario" }, 500);
+        }
+
+        return c.json(newProfile);
+      }
+
       return c.json({ error: "Error al obtener perfil" }, 500);
     }
 
-    // Si es experto, obtener datos adicionales
-    if (profile?.role === 'experto') {
-      const { data: expertData } = await supabase
+    if (!profile) {
+      console.log("Perfil no encontrado para usuario:", user.id);
+      return c.json({ error: "Perfil no encontrado" }, 404);
+    }
+
+    console.log("Perfil encontrado:", profile.email, "Rol:", profile.role);
+
+    // Retornar datos base del perfil
+    const userData = { ...profile };
+
+    // Si es experto, obtener datos adicionales (opcional, no bloquear si no existe)
+    if (profile.role === 'experto') {
+      const { data: expertData, error: expertError } = await supabase
         .from('experts')
         .select('*')
         .eq('id', user.id)
         .single();
 
-      return c.json({ ...profile, ...expertData });
+      if (!expertError && expertData) {
+        Object.assign(userData, expertData);
+      } else {
+        console.log("Advertencia: Experto sin datos adicionales:", expertError?.message);
+      }
     }
 
-    // Si es operador, obtener datos adicionales
-    if (profile?.role === 'operador') {
-      const { data: operatorData } = await supabase
+    // Si es operador, obtener datos adicionales (opcional, no bloquear si no existe)
+    if (profile.role === 'operador') {
+      const { data: operatorData, error: operatorError } = await supabase
         .from('operators')
         .select('*')
         .eq('id', user.id)
         .single();
 
-      return c.json({ ...profile, ...operatorData });
+      if (!operatorError && operatorData) {
+        Object.assign(userData, operatorData);
+      } else {
+        console.log("Advertencia: Operador sin datos adicionales:", operatorError?.message);
+      }
     }
 
-    return c.json(profile);
-  } catch (error) {
-    console.log("Error al obtener usuario:", error);
-    return c.json({ error: "Error al obtener información del usuario" }, 500);
+    console.log("Devolviendo datos de usuario con rol:", userData.role);
+    return c.json(userData);
+  } catch (error: any) {
+    console.log("Error inesperado en /auth/me:", error.message || error);
+    return c.json({ error: "Error al obtener información del usuario: " + (error.message || 'Error desconocido') }, 500);
   }
 });
 
