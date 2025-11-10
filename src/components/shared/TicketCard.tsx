@@ -10,13 +10,22 @@ interface TicketCardProps {
 
 export function TicketCard({ ticket, onClick }: TicketCardProps) {
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('es-ES', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    try {
+      const date = new Date(dateString);
+      // Verificar si la fecha es válida
+      if (isNaN(date.getTime())) {
+        return 'Fecha no disponible';
+      }
+      return date.toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return 'Fecha no disponible';
+    }
   };
 
   return (

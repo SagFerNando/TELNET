@@ -175,10 +175,18 @@ export function TicketChat({ ticket, onStatusChange }: TicketChatProps) {
   };
 
   const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString('es-ES', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    try {
+      const date = new Date(timestamp);
+      if (isNaN(date.getTime())) {
+        return 'Hora inválida';
+      }
+      return date.toLocaleTimeString('es-ES', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return 'Hora inválida';
+    }
   };
 
   const getStatusColor = (status: TicketStatus) => {
@@ -204,18 +212,48 @@ export function TicketChat({ ticket, onStatusChange }: TicketChatProps) {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col space-y-4">
       {/* Header del Ticket */}
-      <Card className="mb-4">
+      <Card>
         <CardHeader className="pb-4">
           <div className="flex justify-between items-start">
-            <div>
-              <CardTitle className="text-lg">{ticket.title}</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                {ticket.id} • {ticket.user?.name} • {ticket.user?.phone}
-              </p>
+            <div className="flex-1">
+              <CardTitle className="text-lg mb-2">{ticket.title}</CardTitle>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                <div>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium">ID:</span> {ticket.id}
+                  </p>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium">Usuario:</span> {ticket.user?.name}
+                  </p>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium">Teléfono:</span> {ticket.user?.phone}
+                  </p>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium">Email:</span> {ticket.user?.email}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium">Ubicación:</span> {ticket.city}
+                  </p>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium">Dirección:</span> {ticket.address}
+                  </p>
+                  {ticket.serviceProvider && (
+                    <p className="text-muted-foreground">
+                      <span className="font-medium">Proveedor:</span> {ticket.serviceProvider}
+                    </p>
+                  )}
+                  <p className="text-muted-foreground">
+                    <span className="font-medium">Prioridad:</span>{' '}
+                    <span className="capitalize">{ticket.priority}</span>
+                  </p>
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 ml-4">
               <Badge className={getStatusColor(ticket.status)}>
                 {ticket.status.replace('_', ' ').toUpperCase()}
               </Badge>
@@ -239,156 +277,157 @@ export function TicketChat({ ticket, onStatusChange }: TicketChatProps) {
         
         <CardContent>
           <div className="bg-gray-50 p-3 rounded-md">
+            <p className="text-sm font-medium mb-1">Descripción del Problema:</p>
             <p className="text-sm">{ticket.description}</p>
-          </div>
-          <div className="mt-3 text-sm text-muted-foreground">
-            <span>Ubicación: {ticket.city} - {ticket.address}</span>
-            {ticket.serviceProvider && (
-              <span> • Proveedor: {ticket.serviceProvider}</span>
-            )}
           </div>
         </CardContent>
       </Card>
 
       {/* Chat Messages */}
-      <Card className="flex-1 flex flex-col">
-        <CardHeader>
+      <Card className="flex-1 flex flex-col min-h-0">
+        <CardHeader className="flex-shrink-0">
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
             Comunicación con el Usuario
           </CardTitle>
         </CardHeader>
         
-        <CardContent className="flex-1 flex flex-col">
-          <ScrollArea ref={scrollAreaRef} className="flex-1 pr-4 mb-4 max-h-[400px]">
-            {loadingMessages ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                <span className="text-muted-foreground">Cargando mensajes...</span>
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>No hay mensajes aún.</p>
-                <p className="text-sm mt-1">Inicia la conversación con el usuario.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {messages.map((message) => {
-                  const { text, imageUrl } = extractImageUrl(message.content);
-                  const isExpert = message.senderRole === 'experto';
-                  
-                  return (
-                    <div
-                      key={message.id}
-                      className={`flex ${isExpert ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div
-                        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                          isExpert
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-gray-100 text-gray-900'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium">
-                            {message.senderName}
-                          </span>
-                          <span className="text-xs opacity-70">
-                            {formatTime(message.timestamp)}
-                          </span>
-                        </div>
-                        {text && <p className="text-sm mb-2">{text}</p>}
-                        {imageUrl && (
-                          <img 
-                            src={imageUrl} 
-                            alt="Evidencia" 
-                            className="rounded-md max-w-full cursor-pointer hover:opacity-90"
-                            onClick={() => window.open(imageUrl, '_blank')}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </ScrollArea>
-
-          {/* Image Preview */}
-          {imagePreview && (
-            <div className="mb-3 relative inline-block">
-              <img 
-                src={imagePreview} 
-                alt="Preview" 
-                className="h-20 rounded-md border"
-              />
-              <button
-                onClick={handleRemoveImage}
-                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          )}
-
-          {/* Message Input */}
-          <div className="flex gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleImageSelect}
-              className="hidden"
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isLoading || uploadingImage}
-              title="Adjuntar imagen"
-            >
-              <ImageIcon className="h-4 w-4" />
-            </Button>
-            <Input
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Escribe tu mensaje..."
-              onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-              disabled={isLoading || uploadingImage}
-            />
-            <Button 
-              onClick={handleSendMessage} 
-              disabled={(!newMessage.trim() && !selectedImage) || isLoading || uploadingImage}
-              size="icon"
-            >
-              {uploadingImage ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+        <CardContent className="flex-1 flex flex-col min-h-0 gap-4">
+          {/* Messages Area with Fixed Height and Scroll */}
+          <div className="flex-1 min-h-0 relative">
+            <ScrollArea ref={scrollAreaRef} className="h-full pr-4">
+              {loadingMessages ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                  <span className="text-muted-foreground">Cargando mensajes...</span>
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>No hay mensajes aún.</p>
+                  <p className="text-sm mt-1">Inicia la conversación con el usuario.</p>
+                </div>
               ) : (
-                <Send className="h-4 w-4" />
+                <div className="space-y-4 pb-4">
+                  {messages.map((message) => {
+                    const { text, imageUrl } = extractImageUrl(message.content);
+                    const isExpert = message.senderRole === 'experto';
+                    
+                    return (
+                      <div
+                        key={message.id}
+                        className={`flex ${isExpert ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div
+                          className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                            isExpert
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-gray-100 text-gray-900'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-medium">
+                              {message.senderName}
+                            </span>
+                            <span className="text-xs opacity-70">
+                              {formatTime(message.timestamp)}
+                            </span>
+                          </div>
+                          {text && <p className="text-sm mb-2">{text}</p>}
+                          {imageUrl && (
+                            <img 
+                              src={imageUrl} 
+                              alt="Evidencia" 
+                              className="rounded-md max-w-full cursor-pointer hover:opacity-90"
+                              onClick={() => window.open(imageUrl, '_blank')}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
-            </Button>
+            </ScrollArea>
           </div>
 
-          {/* Quick Actions */}
-          <div className="flex gap-2 mt-3">
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setNewMessage('He revisado tu caso y necesito programar una visita técnica. ¿Cuándo estarías disponible?')}
-              disabled={isLoading}
-            >
-              <Wrench className="h-4 w-4 mr-2" />
-              Programar Visita
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setNewMessage('El problema ha sido resuelto. Por favor confirma si todo funciona correctamente.')}
-              disabled={isLoading}
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Marcar Resuelto
-            </Button>
+          {/* Input Area - Fixed at Bottom */}
+          <div className="flex-shrink-0 space-y-3 border-t pt-4">
+            {/* Image Preview */}
+            {imagePreview && (
+              <div className="relative inline-block">
+                <img 
+                  src={imagePreview} 
+                  alt="Preview" 
+                  className="h-20 rounded-md border"
+                />
+                <button
+                  onClick={handleRemoveImage}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+
+            {/* Message Input */}
+            <div className="flex gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading || uploadingImage}
+                title="Adjuntar imagen"
+              >
+                <ImageIcon className="h-4 w-4" />
+              </Button>
+              <Input
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Escribe tu mensaje..."
+                onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                disabled={isLoading || uploadingImage}
+              />
+              <Button 
+                onClick={handleSendMessage} 
+                disabled={(!newMessage.trim() && !selectedImage) || isLoading || uploadingImage}
+                size="icon"
+              >
+                {uploadingImage ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setNewMessage('He revisado tu caso y necesito programar una visita técnica. ¿Cuándo estarías disponible?')}
+                disabled={isLoading}
+              >
+                <Wrench className="h-4 w-4 mr-2" />
+                Programar Visita
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setNewMessage('El problema ha sido resuelto. Por favor confirma si todo funciona correctamente.')}
+                disabled={isLoading}
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Marcar Resuelto
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

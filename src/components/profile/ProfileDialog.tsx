@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from '../ui/alert';
 import { Loader2, User, Mail, Phone, MapPin } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { toast } from 'sonner@2.0.3';
+import { createClient } from '../../utils/supabase/client';
 
 interface ProfileDialogProps {
   open: boolean;
@@ -40,12 +41,20 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
     setLoading(true);
 
     try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('No hay sesión activa');
+      }
+
       const response = await fetch(
         'https://kdhumybrhxpaehnyaymx.supabase.co/functions/v1/make-server-370afec0/update-profile',
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
             userId: user?.id,
@@ -75,9 +84,9 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Editar Perfil</DialogTitle>
+          <DialogTitle>Mi Perfil</DialogTitle>
           <DialogDescription>
             Actualiza tu información personal
           </DialogDescription>
@@ -89,6 +98,25 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+
+          {/* Información del rol */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <User className="h-4 w-4 text-blue-600" />
+              <span className="font-medium text-blue-900">Información de Cuenta</span>
+            </div>
+            <div className="space-y-1 text-sm">
+              <p className="text-blue-800">
+                <span className="font-medium">Rol:</span>{' '}
+                <span className="capitalize">
+                  {user.role === 'usuario' ? 'Usuario' : user.role === 'operador' ? 'Operador' : 'Experto Técnico'}
+                </span>
+              </p>
+              <p className="text-blue-800">
+                <span className="font-medium">Email:</span> {user.email}
+              </p>
+            </div>
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="email">Correo Electrónico</Label>
@@ -157,7 +185,7 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
             </div>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 pt-2">
             <Button
               type="button"
               variant="outline"

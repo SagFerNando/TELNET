@@ -1,13 +1,33 @@
-import { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Alert, AlertDescription } from '../ui/alert';
-import { Checkbox } from '../ui/checkbox';
-import { Loader2, Mail, Lock, User, Phone, Briefcase, Award } from 'lucide-react';
-import { useAuth } from './AuthProvider';
+import { useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { Alert, AlertDescription } from "../ui/alert";
+import { Checkbox } from "../ui/checkbox";
+import {
+  Loader2,
+  Mail,
+  Lock,
+  User,
+  Phone,
+  Briefcase,
+  Award,
+} from "lucide-react";
+import { useAuth } from "./AuthProvider";
 
 interface RegisterFormProps {
   onSwitchToLogin: () => void;
@@ -15,72 +35,72 @@ interface RegisterFormProps {
 
 export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
   const { signUp } = useAuth();
-  
+
   // Campos básicos
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [city, setCity] = useState('');
-  const [role, setRole] = useState<'usuario' | 'operador' | 'experto'>('usuario');
-  
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [city, setCity] = useState("");
+  const [role, setRole] = useState<"usuario" | "operador" | "experto">(
+    "usuario"
+  );
+
   // Campos para expertos
   const [specializations, setSpecializations] = useState<string[]>([]);
-  const [certifications, setCertifications] = useState('');
-  const [experienceYears, setExperienceYears] = useState('');
-  const [department, setDepartment] = useState('');
-  
+  const [certifications, setCertifications] = useState("");
+  const [experienceYears, setExperienceYears] = useState("");
+  const [department, setDepartment] = useState("");
+
   // Campos para operadores
-  const [shift, setShift] = useState('');
-  
+  const [shift, setShift] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const availableSpecializations = [
-    'Internet',
-    'Router',
-    'Fibra Óptica',
-    'ADSL',
-    'Teléfono Fijo',
-    'VoIP',
-    'Centralita',
-    'RDSI',
-    'Cableado',
-    'Redes'
+    "Internet",
+    "Router",
+    "Fibra Óptica",
+    "ADSL",
+    "Teléfono Fijo",
+    "VoIP",
+    "Centralita",
+    "RDSI",
+    "Cableado",
+    "Redes",
   ];
 
   const handleSpecializationToggle = (spec: string) => {
-    setSpecializations(prev =>
-      prev.includes(spec)
-        ? prev.filter(s => s !== spec)
-        : [...prev, spec]
+    setSpecializations((prev) =>
+      prev.includes(spec) ? prev.filter((s) => s !== spec) : [...prev, spec]
     );
   };
 
   const validateForm = (): string | null => {
     if (!email || !password || !name) {
-      return 'Por favor completa todos los campos obligatorios';
+      return "Por favor completa todos los campos obligatorios";
     }
 
     if (password.length < 6) {
-      return 'La contraseña debe tener al menos 6 caracteres';
+      return "La contraseña debe tener al menos 6 caracteres";
     }
 
     if (password !== confirmPassword) {
-      return 'Las contraseñas no coinciden';
+      return "Las contraseñas no coinciden";
     }
 
     if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
-      return 'Email inválido';
+      return "Email inválido";
     }
 
-    if (role === 'experto' && specializations.length === 0) {
-      return 'Los expertos deben seleccionar al menos una especialización';
+    if (role === "experto" && specializations.length === 0) {
+      return "Los expertos deben seleccionar al menos una especialización";
     }
 
-    if (role === 'operador' && !shift) {
-      return 'Los operadores deben seleccionar un turno';
+    if (role === "operador" && !shift) {
+      return "Los operadores deben seleccionar un turno";
     }
 
     return null;
@@ -102,24 +122,27 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
       // Preparar datos adicionales según el rol
       const additionalData: any = {
         city: city || null,
-        department: department || null
+        department: department || null,
       };
 
-      if (role === 'experto') {
+      if (role === "experto") {
         additionalData.specializations = specializations;
-        additionalData.certifications = certifications.split(',').map(c => c.trim()).filter(c => c);
+        additionalData.certifications = certifications
+          .split(",")
+          .map((c) => c.trim())
+          .filter((c) => c);
         additionalData.experienceYears = parseInt(experienceYears) || 0;
       }
 
-      if (role === 'operador') {
+      if (role === "operador") {
         additionalData.shift = shift;
       }
 
       await signUp(email, password, name, phone, role, additionalData);
-      
+
       // Éxito - el AuthProvider redirigirá automáticamente
     } catch (err: any) {
-      setError(err.message || 'Error al registrar usuario');
+      setError(err.message || "Error al registrar usuario");
     } finally {
       setLoading(false);
     }
@@ -153,9 +176,15 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="usuario">👤 Usuario - Reportar problemas</SelectItem>
-                <SelectItem value="operador">⚙️ Operador - Gestionar tickets</SelectItem>
-                <SelectItem value="experto">🔧 Experto Técnico - Resolver problemas</SelectItem>
+                <SelectItem value="usuario">
+                  👤 Usuario - Reportar problemas
+                </SelectItem>
+                <SelectItem value="operador">
+                  ⚙️ Operador - Gestionar tickets
+                </SelectItem>
+                <SelectItem value="experto">
+                  🔧 Experto Técnico - Resolver problemas
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -180,7 +209,9 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone">Teléfono {role !== 'usuario' && '*'}</Label>
+              <Label htmlFor="phone">
+                Teléfono {role !== "usuario" && "*"}
+              </Label>
               <div className="relative">
                 <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -190,7 +221,7 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="pl-9"
-                  required={role !== 'usuario'}
+                  required={role !== "usuario"}
                   disabled={loading}
                 />
               </div>
@@ -208,11 +239,11 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
               disabled={loading}
             />
             <p className="text-sm text-muted-foreground">
-              {role === 'experto' 
-                ? 'Ayuda a asignar tickets cercanos a tu ubicación'
-                : role === 'operador'
-                ? 'Para coordinación de equipos regionales'
-                : 'Opcional - Para mejorar el servicio'}
+              {role === "experto"
+                ? "Ayuda a asignar tickets cercanos a tu ubicación"
+                : role === "operador"
+                ? "Para coordinación de equipos regionales"
+                : "Opcional - Para mejorar el servicio"}
             </p>
           </div>
 
@@ -241,13 +272,13 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                 <Input
                   id="password"
                   type="password"
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Mínimo 10 caracteres"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-9"
                   required
                   disabled={loading}
-                  minLength={6}
+                  minLength={10}
                 />
               </div>
             </div>
@@ -271,7 +302,7 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
           </div>
 
           {/* Campos específicos para EXPERTOS */}
-          {role === 'experto' && (
+          {role === "experto" && (
             <>
               <div className="border-t pt-4 mt-4">
                 <h3 className="font-medium mb-3 flex items-center gap-2">
@@ -283,12 +314,14 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                   <div className="space-y-2">
                     <Label>Especializaciones * (selecciona al menos una)</Label>
                     <div className="grid grid-cols-2 gap-2 p-3 border rounded-lg bg-muted/50">
-                      {availableSpecializations.map(spec => (
+                      {availableSpecializations.map((spec) => (
                         <div key={spec} className="flex items-center space-x-2">
                           <Checkbox
                             id={`spec-${spec}`}
                             checked={specializations.includes(spec)}
-                            onCheckedChange={() => handleSpecializationToggle(spec)}
+                            onCheckedChange={() =>
+                              handleSpecializationToggle(spec)
+                            }
                             disabled={loading}
                           />
                           <label
@@ -304,7 +337,9 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="experienceYears">Años de Experiencia</Label>
+                      <Label htmlFor="experienceYears">
+                        Años de Experiencia
+                      </Label>
                       <Input
                         id="experienceYears"
                         type="number"
@@ -331,7 +366,9 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="certifications">Certificaciones (separadas por comas)</Label>
+                    <Label htmlFor="certifications">
+                      Certificaciones (separadas por comas)
+                    </Label>
                     <Input
                       id="certifications"
                       type="text"
@@ -347,7 +384,7 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
           )}
 
           {/* Campos específicos para OPERADORES */}
-          {role === 'operador' && (
+          {role === "operador" && (
             <>
               <div className="border-t pt-4 mt-4">
                 <h3 className="font-medium mb-3 flex items-center gap-2">
@@ -367,9 +404,15 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                         <SelectValue placeholder="Selecciona turno" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="mañana">🌅 Mañana (8:00 - 16:00)</SelectItem>
-                        <SelectItem value="tarde">🌆 Tarde (16:00 - 24:00)</SelectItem>
-                        <SelectItem value="noche">🌙 Noche (24:00 - 8:00)</SelectItem>
+                        <SelectItem value="mañana">
+                          🌅 Mañana (8:00 - 16:00)
+                        </SelectItem>
+                        <SelectItem value="tarde">
+                          🌆 Tarde (16:00 - 24:00)
+                        </SelectItem>
+                        <SelectItem value="noche">
+                          🌙 Noche (24:00 - 8:00)
+                        </SelectItem>
                         <SelectItem value="rotativo">🔄 Rotativo</SelectItem>
                       </SelectContent>
                     </Select>
@@ -398,7 +441,7 @@ export function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                 Registrando...
               </>
             ) : (
-              'Crear Cuenta'
+              "Crear Cuenta"
             )}
           </Button>
 

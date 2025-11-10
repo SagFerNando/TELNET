@@ -98,20 +98,6 @@ export function AppWithAuth() {
     );
   }
 
-  // Mostrar setup si es necesario
-  // if (showSetup && !user) {
-  //   return (
-  //     <div>
-  //       <DatabaseSetup />
-  //       <div className="fixed bottom-4 right-4">
-  //         <Button variant="outline" onClick={handleSkipSetup}>
-  //           Ya configuré la base de datos
-  //         </Button>
-  //       </div>
-  //     </div>
-  //   );
-  // }
-
   // Mostrar login o registro si no hay usuario
   if (!user) {
     return (
@@ -140,16 +126,7 @@ export function AppWithAuth() {
             />
           )}
 
-          <div className="text-center mt-4">
-            {/* <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowSetup(true)}
-            >
-              <Database className="h-4 w-4 mr-2" />
-              Configurar Base de Datos
-            </Button> */}
-          </div>
+          <div className="text-center mt-4"></div>
         </div>
       </div>
     );
@@ -232,10 +209,6 @@ export function AppWithAuth() {
               <div className="hidden sm:flex items-center gap-2">
                 <Badge variant="outline">{user.email}</Badge>
               </div>
-              <Button variant="outline" size="sm" onClick={signOut}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Salir
-              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm">
@@ -275,15 +248,7 @@ export function AppWithAuth() {
 
       {/* Info Footer */}
       {process.env.NODE_ENV === "development" && (
-        <div className="fixed bottom-4 left-4 max-w-xs">
-          {/* <Alert className="bg-blue-50 border-blue-200">
-            <AlertDescription className="text-xs">
-              <strong>Modo desarrollo</strong>
-              <br />
-              Usuario: {user.role} ({user.email})
-            </AlertDescription>
-          </Alert> */}
-        </div>
+        <div className="fixed bottom-4 left-4 max-w-xs"></div>
       )}
 
       {/* Dialogs */}

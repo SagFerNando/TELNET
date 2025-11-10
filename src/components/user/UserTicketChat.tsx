@@ -170,10 +170,18 @@ export function UserTicketChat({ ticket, onBack }: UserTicketChatProps) {
   };
 
   const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString('es-ES', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    try {
+      const date = new Date(timestamp);
+      if (isNaN(date.getTime())) {
+        return 'Hora inválida';
+      }
+      return date.toLocaleTimeString('es-ES', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return 'Hora inválida';
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -216,10 +224,40 @@ export function UserTicketChat({ ticket, onBack }: UserTicketChatProps) {
         <CardHeader className="pb-4">
           <div className="flex justify-between items-start">
             <div className="flex-1">
-              <CardTitle className="text-lg">{ticket.title}</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                {ticket.id}
-              </p>
+              <CardTitle className="text-lg mb-2">{ticket.title}</CardTitle>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                <div>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium">ID:</span> {ticket.id}
+                  </p>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium">Ubicación:</span> {ticket.city}
+                  </p>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium">Dirección:</span> {ticket.address}
+                  </p>
+                  {ticket.serviceProvider && (
+                    <p className="text-muted-foreground">
+                      <span className="font-medium">Proveedor:</span> {ticket.serviceProvider}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium">Prioridad:</span>{' '}
+                    <span className="capitalize">{ticket.priority}</span>
+                  </p>
+                  <p className="text-muted-foreground">
+                    <span className="font-medium">Tipo:</span>{' '}
+                    {ticket.problemType.replace(/_/g, ' ')}
+                  </p>
+                  {ticket.assignedExpert && (
+                    <p className="text-muted-foreground">
+                      <span className="font-medium">Experto:</span> {ticket.assignedExpert.name}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
             <Badge className={getStatusColor(ticket.status)}>
               {ticket.status.replace('_', ' ').toUpperCase()}
@@ -229,26 +267,15 @@ export function UserTicketChat({ ticket, onBack }: UserTicketChatProps) {
         
         <CardContent>
           <div className="bg-gray-50 p-3 rounded-md">
+            <p className="text-sm font-medium mb-1">Descripción del Problema:</p>
             <p className="text-sm">{ticket.description}</p>
           </div>
-          <div className="mt-3 text-sm text-muted-foreground">
-            <span>Ubicación: {ticket.city} - {ticket.address}</span>
-            {ticket.serviceProvider && (
-              <span> • Proveedor: {ticket.serviceProvider}</span>
-            )}
-          </div>
-          {ticket.assignedExpert && (
-            <div className="mt-3 text-sm">
-              <span className="text-muted-foreground">Asignado a: </span>
-              <span className="font-medium">{ticket.assignedExpert.name}</span>
-            </div>
-          )}
         </CardContent>
       </Card>
 
       {/* Chat Messages */}
-      <Card className="flex-1 flex flex-col">
-        <CardHeader>
+      <Card className="flex-1 flex flex-col min-h-[600px]">
+        <CardHeader className="flex-shrink-0">
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
             {ticket.assignedExpert 
@@ -258,127 +285,170 @@ export function UserTicketChat({ ticket, onBack }: UserTicketChatProps) {
           </CardTitle>
         </CardHeader>
         
-        <CardContent className="flex-1 flex flex-col">
-          <ScrollArea ref={scrollAreaRef} className="flex-1 pr-4 mb-4 max-h-[400px]">
-            {loadingMessages ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                <span className="text-muted-foreground">Cargando mensajes...</span>
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>No hay mensajes aún.</p>
-                {ticket.assignedExpert ? (
-                  <p className="text-sm mt-1">El experto se comunicará contigo pronto.</p>
-                ) : (
-                  <p className="text-sm mt-1">Espera a que se asigne un experto a tu ticket.</p>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {messages.map((message) => {
-                  const { text, imageUrl } = extractImageUrl(message.content);
-                  const isUser = message.senderRole === 'usuario';
-                  
-                  return (
-                    <div
-                      key={message.id}
-                      className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
-                    >
+        <CardContent className="flex-1 flex flex-col min-h-0 gap-4">
+          {/* Messages Area with Fixed Height and Scroll */}
+          <div className="flex-1 min-h-0 relative">
+            <ScrollArea ref={scrollAreaRef} className="h-full pr-4">
+              {loadingMessages ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                  <span className="text-muted-foreground">Cargando mensajes...</span>
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>No hay mensajes aún.</p>
+                  {ticket.assignedExpert ? (
+                    <p className="text-sm mt-1">El experto se comunicará contigo pronto.</p>
+                  ) : (
+                    <p className="text-sm mt-1">Espera a que se asigne un experto a tu ticket.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4 pb-4">
+                  {messages.map((message) => {
+                    const { text, imageUrl } = extractImageUrl(message.content);
+                    const isUser = message.senderRole === 'usuario';
+                    
+                    return (
                       <div
-                        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                          isUser
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-gray-100 text-gray-900'
-                        }`}
+                        key={message.id}
+                        className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
                       >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium">
-                            {message.senderName}
-                          </span>
-                          <span className="text-xs opacity-70">
-                            {formatTime(message.timestamp)}
-                          </span>
+                        <div
+                          className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                            isUser
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-gray-100 text-gray-900'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-medium">
+                              {message.senderName}
+                            </span>
+                            <span className="text-xs opacity-70">
+                              {formatTime(message.timestamp)}
+                            </span>
+                          </div>
+                          {text && <p className="text-sm mb-2">{text}</p>}
+                          {imageUrl && (
+                            <img 
+                              src={imageUrl} 
+                              alt="Evidencia" 
+                              className="rounded-md max-w-full cursor-pointer hover:opacity-90"
+                              onClick={() => window.open(imageUrl, '_blank')}
+                            />
+                          )}
                         </div>
-                        {text && <p className="text-sm mb-2">{text}</p>}
-                        {imageUrl && (
-                          <img 
-                            src={imageUrl} 
-                            alt="Evidencia" 
-                            className="rounded-md max-w-full cursor-pointer hover:opacity-90"
-                            onClick={() => window.open(imageUrl, '_blank')}
-                          />
-                        )}
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+
+          {/* Input Area - Fixed at Bottom */}
+          <div className="flex-shrink-0 space-y-3 border-t pt-4">
+            {/* Image Preview */}
+            {imagePreview && (
+              <div className="relative inline-block">
+                <img 
+                  src={imagePreview} 
+                  alt="Preview" 
+                  className="h-20 rounded-md border"
+                />
+                <button
+                  onClick={handleRemoveImage}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                >
+                  <X className="h-3 w-3" />
+                </button>
               </div>
             )}
-          </ScrollArea>
 
-          {/* Image Preview */}
-          {imagePreview && (
-            <div className="mb-3 relative inline-block">
-              <img 
-                src={imagePreview} 
-                alt="Preview" 
-                className="h-20 rounded-md border"
-              />
-              <button
-                onClick={handleRemoveImage}
-                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          )}
-
-          {/* Message Input */}
-          {ticket.status !== 'cerrado' && (
-            <div className="flex gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageSelect}
-                className="hidden"
-              />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isLoading || uploadingImage}
-                title="Adjuntar imagen"
-              >
-                <ImageIcon className="h-4 w-4" />
-              </Button>
-              <Input
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="Escribe tu mensaje..."
-                onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                disabled={isLoading || uploadingImage}
-              />
-              <Button 
-                onClick={handleSendMessage} 
-                disabled={(!newMessage.trim() && !selectedImage) || isLoading || uploadingImage}
-                size="icon"
-              >
-                {uploadingImage ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          )}
-          
-          {ticket.status === 'cerrado' && (
-            <div className="text-center text-sm text-muted-foreground py-2">
-              Este ticket ha sido cerrado. No se pueden enviar más mensajes.
-            </div>
-          )}
+            {/* Message Input or Closed/Reopened Message */}
+            {ticket.status === 'cerrado' ? (
+              <div className="text-center text-sm text-muted-foreground py-2">
+                <p className="mb-3">Este ticket ha sido cerrado.</p>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const { updateTicketStatus } = await import('../../utils/api');
+                      await updateTicketStatus(ticket.id, 'en_progreso');
+                      toast.success('Ticket reabierto correctamente');
+                      onBack();
+                    } catch (error: any) {
+                      toast.error('Error al reabrir ticket: ' + (error.message || 'Error desconocido'));
+                    }
+                  }}
+                >
+                  Reabrir Ticket
+                </Button>
+              </div>
+            ) : ticket.status === 'resuelto' ? (
+              <div className="text-center text-sm py-2">
+                <p className="text-muted-foreground mb-3">Este ticket está marcado como resuelto.</p>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const { updateTicketStatus } = await import('../../utils/api');
+                      await updateTicketStatus(ticket.id, 'en_progreso');
+                      toast.success('Ticket reabierto correctamente');
+                      onBack();
+                    } catch (error: any) {
+                      toast.error('Error al reabrir ticket: ' + (error.message || 'Error desconocido'));
+                    }
+                  }}
+                >
+                  Reabrir Ticket (el problema persiste)
+                </Button>
+              </div>
+            ) : (
+              <>
+                {/* Message Input */}
+                <div className="flex gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isLoading || uploadingImage}
+                    title="Adjuntar imagen"
+                  >
+                    <ImageIcon className="h-4 w-4" />
+                  </Button>
+                  <Input
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Escribe tu mensaje..."
+                    onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                    disabled={isLoading || uploadingImage}
+                  />
+                  <Button 
+                    onClick={handleSendMessage} 
+                    disabled={(!newMessage.trim() && !selectedImage) || isLoading || uploadingImage}
+                    size="icon"
+                  >
+                    {uploadingImage ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

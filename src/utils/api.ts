@@ -3,8 +3,8 @@
  * Centraliza todas las operaciones de datos
  */
 
-import { fetchFromServer } from './supabase/client';
-import { Ticket, Expert, Message, TicketActivity } from '../types';
+import { fetchFromServer } from "./supabase/client";
+import { Ticket, Expert, Message, TicketActivity } from "../types";
 
 // ============================================
 // TICKETS
@@ -13,10 +13,10 @@ import { Ticket, Expert, Message, TicketActivity } from '../types';
 export interface CreateTicketData {
   title: string;
   description: string;
-  problemType: string;  // ProblemType - ampliado
-  priority: 'baja' | 'media' | 'alta' | 'critica';
-  city: string;         // Ciudad donde está el problema
-  address: string;      // Dirección del problema
+  problemType: string; // ProblemType - ampliado
+  priority: "baja" | "media" | "alta" | "critica";
+  city: string; // Ciudad donde está el problema
+  address: string; // Dirección del problema
   serviceProvider?: string;
 }
 
@@ -24,15 +24,15 @@ export interface TicketFilters {
   status?: string;
   problemType?: string;
   priority?: string;
-  city?: string;  // Filtrar por ciudad
+  city?: string; // Filtrar por ciudad
 }
 
 /**
  * Crear un nuevo ticket
  */
 export async function createTicket(data: CreateTicketData): Promise<Ticket> {
-  const response = await fetchFromServer('/tickets', {
-    method: 'POST',
+  const response = await fetchFromServer("/tickets", {
+    method: "POST",
     body: JSON.stringify(data),
   });
   return response.ticket;
@@ -43,14 +43,14 @@ export async function createTicket(data: CreateTicketData): Promise<Ticket> {
  */
 export async function getTickets(filters?: TicketFilters): Promise<Ticket[]> {
   const params = new URLSearchParams();
-  if (filters?.status) params.append('status', filters.status);
-  if (filters?.problemType) params.append('problemType', filters.problemType);
-  if (filters?.priority) params.append('priority', filters.priority);
-  if (filters?.city) params.append('city', filters.city);
+  if (filters?.status) params.append("status", filters.status);
+  if (filters?.problemType) params.append("problemType", filters.problemType);
+  if (filters?.priority) params.append("priority", filters.priority);
+  if (filters?.city) params.append("city", filters.city);
 
   const queryString = params.toString();
-  const endpoint = queryString ? `/tickets?${queryString}` : '/tickets';
-  
+  const endpoint = queryString ? `/tickets?${queryString}` : "/tickets";
+
   const response = await fetchFromServer(endpoint);
   return response.tickets || [];
 }
@@ -66,11 +66,15 @@ export async function getTicket(ticketId: string): Promise<Ticket> {
 /**
  * Asignar ticket a un experto (solo operadores)
  */
-export async function assignTicket(ticketId: string, expertId: string): Promise<Ticket> {
+export async function assignTicket(
+  ticketId: string,
+  expertId: string
+): Promise<Ticket> {
   const response = await fetchFromServer(`/tickets/${ticketId}/assign`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify({ expertId }),
   });
+  console.log(expertId);
   return response.ticket;
 }
 
@@ -79,10 +83,10 @@ export async function assignTicket(ticketId: string, expertId: string): Promise<
  */
 export async function updateTicketStatus(
   ticketId: string,
-  status: 'pendiente' | 'asignado' | 'en_progreso' | 'resuelto' | 'cerrado'
+  status: "pendiente" | "asignado" | "en_progreso" | "resuelto" | "cerrado"
 ): Promise<Ticket> {
   const response = await fetchFromServer(`/tickets/${ticketId}/status`, {
-    method: 'PUT',
+    method: "PUT",
     body: JSON.stringify({ status }),
   });
   return response.ticket;
@@ -91,7 +95,9 @@ export async function updateTicketStatus(
 /**
  * Obtener actividades de un ticket
  */
-export async function getTicketActivities(ticketId: string): Promise<TicketActivity[]> {
+export async function getTicketActivities(
+  ticketId: string
+): Promise<TicketActivity[]> {
   const response = await fetchFromServer(`/tickets/${ticketId}/activities`);
   return response.activities || [];
 }
@@ -103,9 +109,12 @@ export async function getTicketActivities(ticketId: string): Promise<TicketActiv
 /**
  * Enviar un mensaje en un ticket
  */
-export async function sendMessage(ticketId: string, content: string): Promise<Message> {
-  const response = await fetchFromServer('/messages', {
-    method: 'POST',
+export async function sendMessage(
+  ticketId: string,
+  content: string
+): Promise<Message> {
+  const response = await fetchFromServer("/messages", {
+    method: "POST",
     body: JSON.stringify({ ticketId, content }),
   });
   return response.message;
@@ -127,16 +136,18 @@ export async function getMessages(ticketId: string): Promise<Message[]> {
  * Obtener lista de todos los expertos
  */
 export async function getExperts(): Promise<Expert[]> {
-  const response = await fetchFromServer('/experts');
+  const response = await fetchFromServer("/experts");
   return response.experts || [];
 }
 
 /**
  * Obtener expertos filtrados por especialización
  */
-export async function getExpertsBySpecialization(specialization: string): Promise<Expert[]> {
+export async function getExpertsBySpecialization(
+  specialization: string
+): Promise<Expert[]> {
   const experts = await getExperts();
-  return experts.filter(expert => 
+  return experts.filter((expert) =>
     expert.specializations.includes(specialization)
   );
 }
@@ -171,8 +182,10 @@ export interface ExpertStats {
 /**
  * Obtener estadísticas según el rol del usuario
  */
-export async function getStats(): Promise<UserStats | OperatorStats | ExpertStats> {
-  const response = await fetchFromServer('/stats');
+export async function getStats(): Promise<
+  UserStats | OperatorStats | ExpertStats
+> {
+  const response = await fetchFromServer("/stats");
   return response.stats;
 }
 
@@ -185,12 +198,12 @@ export async function getStats(): Promise<UserStats | OperatorStats | ExpertStat
  */
 export function getPriorityColor(priority: string): string {
   const colors: Record<string, string> = {
-    baja: 'bg-gray-100 text-gray-800',
-    media: 'bg-blue-100 text-blue-800',
-    alta: 'bg-orange-100 text-orange-800',
-    critica: 'bg-red-100 text-red-800',
+    baja: "bg-gray-100 text-gray-800",
+    media: "bg-blue-100 text-blue-800",
+    alta: "bg-orange-100 text-orange-800",
+    critica: "bg-red-100 text-red-800",
   };
-  return colors[priority] || 'bg-gray-100 text-gray-800';
+  return colors[priority] || "bg-gray-100 text-gray-800";
 }
 
 /**
@@ -198,13 +211,13 @@ export function getPriorityColor(priority: string): string {
  */
 export function getStatusColor(status: string): string {
   const colors: Record<string, string> = {
-    pendiente: 'bg-yellow-100 text-yellow-800',
-    asignado: 'bg-blue-100 text-blue-800',
-    en_progreso: 'bg-purple-100 text-purple-800',
-    resuelto: 'bg-green-100 text-green-800',
-    cerrado: 'bg-gray-100 text-gray-800',
+    pendiente: "bg-yellow-100 text-yellow-800",
+    asignado: "bg-blue-100 text-blue-800",
+    en_progreso: "bg-purple-100 text-purple-800",
+    resuelto: "bg-green-100 text-green-800",
+    cerrado: "bg-gray-100 text-gray-800",
   };
-  return colors[status] || 'bg-gray-100 text-gray-800';
+  return colors[status] || "bg-gray-100 text-gray-800";
 }
 
 /**
@@ -218,15 +231,15 @@ export function formatRelativeTime(date: string): string {
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return 'Ahora mismo';
+  if (diffMins < 1) return "Ahora mismo";
   if (diffMins < 60) return `Hace ${diffMins} min`;
   if (diffHours < 24) return `Hace ${diffHours}h`;
   if (diffDays < 7) return `Hace ${diffDays}d`;
-  
-  return then.toLocaleDateString('es-ES', {
-    day: '2-digit',
-    month: 'short',
-    year: diffDays > 365 ? 'numeric' : undefined
+
+  return then.toLocaleDateString("es-ES", {
+    day: "2-digit",
+    month: "short",
+    year: diffDays > 365 ? "numeric" : undefined,
   });
 }
 
@@ -234,11 +247,11 @@ export function formatRelativeTime(date: string): string {
  * Formatear fecha completa
  */
 export function formatFullDate(date: string): string {
-  return new Date(date).toLocaleDateString('es-ES', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
+  return new Date(date).toLocaleDateString("es-ES", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
