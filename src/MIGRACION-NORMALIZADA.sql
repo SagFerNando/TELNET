@@ -195,6 +195,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
+-- PASO 9: Agregar soporte para imágenes en mensajes
+ALTER TABLE public.messages 
+ADD COLUMN IF NOT EXISTS image_url TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_messages_image_url ON public.messages(image_url) WHERE image_url IS NOT NULL;
+
+COMMENT ON COLUMN public.messages.image_url IS 'URL de imagen adjunta al mensaje (evidencia fotográfica)';
+
 -- ============================================
 -- VERIFICACIÓN
 -- ============================================
@@ -244,6 +252,7 @@ ORDER BY ordinal_position;
 -- ✅ Vista 'tickets_with_details' creada para consultas
 -- ✅ Vistas adicionales para expertos y operadores
 -- ✅ Función para etiquetas de problemas
+-- ✅ Soporte para imágenes en mensajes
 --
 -- SIGUIENTE PASO:
 -- Los tickets existentes tienen ciudad "No especificada"

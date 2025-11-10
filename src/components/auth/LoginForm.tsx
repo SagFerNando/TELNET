@@ -9,9 +9,10 @@ import { useAuth } from './AuthProvider';
 
 interface LoginFormProps {
   onSwitchToRegister: () => void;
+  onSwitchToForgotPassword: () => void;
 }
 
-export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
+export function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword }: LoginFormProps) {
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -66,7 +67,16 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Contraseña</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Contraseña</Label>
+              <button
+                type="button"
+                onClick={onSwitchToForgotPassword}
+                className="text-xs text-primary hover:underline"
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
+            </div>
             <div className="relative">
               <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
@@ -83,36 +93,18 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
           </div>
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Iniciando sesión...
-              </>
-            ) : (
-              'Iniciar Sesión'
-            )}
+            {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
           </Button>
 
-          <div className="text-center text-sm">
+          <div className="mt-4 text-center text-sm">
             <span className="text-muted-foreground">¿No tienes cuenta? </span>
-            <Button
+            <button
               type="button"
-              variant="link"
-              className="p-0 h-auto"
               onClick={onSwitchToRegister}
-              disabled={loading}
+              className="text-primary hover:underline"
             >
               Regístrate aquí
-            </Button>
-          </div>
-
-          <div className="mt-4 p-4 bg-muted rounded-lg">
-            <p className="text-sm mb-2">Usuarios de prueba:</p>
-            <div className="space-y-1 text-xs">
-              <p>👤 Usuario: usuario@test.com / test123</p>
-              <p>⚙️ Operador: operador@test.com / test123</p>
-              <p>🔧 Experto: experto1@test.com / test123</p>
-            </div>
+            </button>
           </div>
         </form>
       </CardContent>

@@ -1,23 +1,49 @@
-import { useState, useEffect } from 'react';
-import { UserDashboard } from './dashboard/UserDashboard';
-import { OperatorDashboard } from './dashboard/OperatorDashboard';
-import { ExpertDashboard } from './dashboard/ExpertDashboard';
-import { LoginForm } from './auth/LoginForm';
-import { RegisterForm } from './auth/RegisterForm';
-import { DatabaseSetup } from './setup/DatabaseSetup';
-import { useAuth } from './auth/AuthProvider';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Alert, AlertDescription } from './ui/alert';
-import { Loader2, User, Settings, Wrench, LogOut, Database } from 'lucide-react';
-import { createClient } from '../utils/supabase/client';
+import { useState, useEffect } from "react";
+import { UserDashboard } from "./dashboard/UserDashboard";
+import { OperatorDashboard } from "./dashboard/OperatorDashboard";
+import { ExpertDashboard } from "./dashboard/ExpertDashboard";
+import { LoginForm } from "./auth/LoginForm";
+import { RegisterForm } from "./auth/RegisterForm";
+import { ForgotPasswordForm } from "./auth/ForgotPasswordForm";
+import { DatabaseSetup } from "./setup/DatabaseSetup";
+import { ProfileDialog } from "./profile/ProfileDialog";
+import { ChangePasswordDialog } from "./profile/ChangePasswordDialog";
+import { HelpDialog } from "./help/HelpDialog";
+import { useAuth } from "./auth/AuthProvider";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
+import { Alert, AlertDescription } from "./ui/alert";
+import {
+  Loader2,
+  User,
+  Settings,
+  Wrench,
+  LogOut,
+  Database,
+  HelpCircle,
+  UserCircle,
+  KeyRound,
+} from "lucide-react";
+import { createClient } from "../utils/supabase/client";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 
 export function AppWithAuth() {
   const { user, loading: authLoading, signOut } = useAuth();
   const [showSetup, setShowSetup] = useState(false);
   const [checkingSetup, setCheckingSetup] = useState(true);
   const [showRegister, setShowRegister] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [showHelpDialog, setShowHelpDialog] = useState(false);
 
   useEffect(() => {
     // Verificar si ya se ejecutó el setup
@@ -30,16 +56,16 @@ export function AppWithAuth() {
       const response = await fetch(
         `https://kdhumybrhxpaehnyaymx.supabase.co/functions/v1/make-server-370afec0/health`
       );
-      
+
       if (response.ok) {
         // El servidor está funcionando
-        const setupDone = localStorage.getItem('setupCompleted');
+        const setupDone = localStorage.getItem("setupCompleted");
         setShowSetup(!setupDone);
       } else {
         setShowSetup(true);
       }
     } catch (error) {
-      console.error('Error verificando setup:', error);
+      console.error("Error verificando setup:", error);
       setShowSetup(true);
     } finally {
       setCheckingSetup(false);
@@ -47,12 +73,12 @@ export function AppWithAuth() {
   };
 
   const handleSetupComplete = () => {
-    localStorage.setItem('setupCompleted', 'true');
+    localStorage.setItem("setupCompleted", "true");
     setShowSetup(false);
   };
 
   const handleSkipSetup = () => {
-    localStorage.setItem('setupCompleted', 'true');
+    localStorage.setItem("setupCompleted", "true");
     setShowSetup(false);
   };
 
@@ -73,46 +99,56 @@ export function AppWithAuth() {
   }
 
   // Mostrar setup si es necesario
-  if (showSetup && !user) {
-    return (
-      <div>
-        <DatabaseSetup />
-        <div className="fixed bottom-4 right-4">
-          <Button variant="outline" onClick={handleSkipSetup}>
-            Ya configuré la base de datos
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  // if (showSetup && !user) {
+  //   return (
+  //     <div>
+  //       <DatabaseSetup />
+  //       <div className="fixed bottom-4 right-4">
+  //         <Button variant="outline" onClick={handleSkipSetup}>
+  //           Ya configuré la base de datos
+  //         </Button>
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
   // Mostrar login o registro si no hay usuario
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-        <div className="w-full max-w-2xl space-y-4">
-          <div className="text-center mb-6">
-            <h1 className="text-3xl mb-2">Sistema de Tickets</h1>
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
+              <Wrench className="h-8 w-8 text-white" />
+            </div>
+            <h1 className="text-4xl mb-2">TELNET</h1>
             <p className="text-muted-foreground">
-              Gestión de soporte técnico
+              Sistema de Gestión de Tickets de Soporte Técnico
             </p>
           </div>
 
-          {showRegister ? (
+          {showForgotPassword ? (
+            <ForgotPasswordForm
+              onBackToLogin={() => setShowForgotPassword(false)}
+            />
+          ) : showRegister ? (
             <RegisterForm onSwitchToLogin={() => setShowRegister(false)} />
           ) : (
-            <LoginForm onSwitchToRegister={() => setShowRegister(true)} />
+            <LoginForm
+              onSwitchToRegister={() => setShowRegister(true)}
+              onSwitchToForgotPassword={() => setShowForgotPassword(true)}
+            />
           )}
 
-          <div className="text-center">
-            <Button
+          <div className="text-center mt-4">
+            {/* <Button
               variant="ghost"
               size="sm"
               onClick={() => setShowSetup(true)}
             >
               <Database className="h-4 w-4 mr-2" />
               Configurar Base de Datos
-            </Button>
+            </Button> */}
           </div>
         </div>
       </div>
@@ -122,11 +158,11 @@ export function AppWithAuth() {
   // Usuario autenticado - mostrar dashboard según rol
   const getRoleIcon = () => {
     switch (user.role) {
-      case 'usuario':
+      case "usuario":
         return User;
-      case 'operador':
+      case "operador":
         return Settings;
-      case 'experto':
+      case "experto":
         return Wrench;
       default:
         return User;
@@ -135,37 +171,37 @@ export function AppWithAuth() {
 
   const getRoleColor = () => {
     switch (user.role) {
-      case 'usuario':
-        return 'bg-blue-600';
-      case 'operador':
-        return 'bg-green-600';
-      case 'experto':
-        return 'bg-purple-600';
+      case "usuario":
+        return "bg-blue-600";
+      case "operador":
+        return "bg-green-600";
+      case "experto":
+        return "bg-purple-600";
       default:
-        return 'bg-gray-600';
+        return "bg-gray-600";
     }
   };
 
   const getRoleName = () => {
     switch (user.role) {
-      case 'usuario':
-        return 'Usuario';
-      case 'operador':
-        return 'Operador';
-      case 'experto':
-        return 'Experto Técnico';
+      case "usuario":
+        return "Usuario";
+      case "operador":
+        return "Operador";
+      case "experto":
+        return "Experto Técnico";
       default:
-        return 'Usuario';
+        return "Usuario";
     }
   };
 
   const renderDashboard = () => {
     switch (user.role) {
-      case 'usuario':
+      case "usuario":
         return <UserDashboard />;
-      case 'operador':
+      case "operador":
         return <OperatorDashboard />;
-      case 'experto':
+      case "experto":
         return <ExpertDashboard />;
       default:
         return <UserDashboard />;
@@ -185,7 +221,7 @@ export function AppWithAuth() {
                 <RoleIcon className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-medium">Sistema de Tickets</h2>
+                <h2 className="text-lg font-medium">TELNET</h2>
                 <p className="text-sm text-muted-foreground">
                   {getRoleName()} - {user.name}
                 </p>
@@ -200,28 +236,66 @@ export function AppWithAuth() {
                 <LogOut className="h-4 w-4 mr-2" />
                 Salir
               </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <UserCircle className="h-4 w-4 mr-2" />
+                    Perfil
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56">
+                  <DropdownMenuLabel>Configuración</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setShowProfileDialog(true)}>
+                    <UserCircle className="mr-2 h-4 w-4" />
+                    Ver Perfil
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowPasswordDialog(true)}>
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    Cambiar Contraseña
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowHelpDialog(true)}>
+                    <HelpCircle className="mr-2 h-4 w-4" />
+                    Ayuda
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={signOut}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Salir
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main>
-        {renderDashboard()}
-      </main>
+      <main>{renderDashboard()}</main>
 
       {/* Info Footer */}
-      {process.env.NODE_ENV === 'development' && (
+      {process.env.NODE_ENV === "development" && (
         <div className="fixed bottom-4 left-4 max-w-xs">
-          <Alert className="bg-blue-50 border-blue-200">
+          {/* <Alert className="bg-blue-50 border-blue-200">
             <AlertDescription className="text-xs">
               <strong>Modo desarrollo</strong>
               <br />
               Usuario: {user.role} ({user.email})
             </AlertDescription>
-          </Alert>
+          </Alert> */}
         </div>
       )}
+
+      {/* Dialogs */}
+      <ProfileDialog
+        open={showProfileDialog}
+        onOpenChange={setShowProfileDialog}
+      />
+      <ChangePasswordDialog
+        open={showPasswordDialog}
+        onOpenChange={setShowPasswordDialog}
+      />
+      <HelpDialog open={showHelpDialog} onOpenChange={setShowHelpDialog} />
     </div>
   );
 }

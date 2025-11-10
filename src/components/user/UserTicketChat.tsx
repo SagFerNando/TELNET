@@ -4,19 +4,18 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { ScrollArea } from '../ui/scroll-area';
 import { Badge } from '../ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Ticket, Message, TicketStatus } from '../../types';
-import { Send, User, Wrench, CheckCircle, Image as ImageIcon, X, Loader2 } from 'lucide-react';
+import { Ticket, Message } from '../../types';
+import { Send, User, Image as ImageIcon, X, Loader2, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { getMessages, sendMessage } from '../../utils/api';
 import { createClient } from '../../utils/supabase/client';
 
-interface TicketChatProps {
+interface UserTicketChatProps {
   ticket: Ticket;
-  onStatusChange: (ticketId: string, newStatus: TicketStatus) => void;
+  onBack: () => void;
 }
 
-export function TicketChat({ ticket, onStatusChange }: TicketChatProps) {
+export function UserTicketChat({ ticket, onBack }: UserTicketChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -170,10 +169,6 @@ export function TicketChat({ ticket, onStatusChange }: TicketChatProps) {
     }
   };
 
-  const handleStatusChange = (newStatus: TicketStatus) => {
-    onStatusChange(ticket.id, newStatus);
-  };
-
   const formatTime = (timestamp: string) => {
     return new Date(timestamp).toLocaleTimeString('es-ES', {
       hour: '2-digit',
@@ -181,15 +176,15 @@ export function TicketChat({ ticket, onStatusChange }: TicketChatProps) {
     });
   };
 
-  const getStatusColor = (status: TicketStatus) => {
-    const colors = {
+  const getStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
       pendiente: 'bg-gray-100 text-gray-800',
       asignado: 'bg-blue-100 text-blue-800',
       en_progreso: 'bg-purple-100 text-purple-800',
       resuelto: 'bg-green-100 text-green-800',
       cerrado: 'bg-slate-100 text-slate-800'
     };
-    return colors[status];
+    return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
   // Función para detectar si el mensaje contiene una URL de imagen
@@ -204,36 +199,31 @@ export function TicketChat({ ticket, onStatusChange }: TicketChatProps) {
   };
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header del Ticket */}
-      <Card className="mb-4">
+    <div className="container mx-auto py-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <Button 
+          variant="outline" 
+          onClick={onBack}
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Volver a Tickets
+        </Button>
+      </div>
+
+      {/* Ticket Info */}
+      <Card>
         <CardHeader className="pb-4">
           <div className="flex justify-between items-start">
-            <div>
+            <div className="flex-1">
               <CardTitle className="text-lg">{ticket.title}</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                {ticket.id} • {ticket.user?.name} • {ticket.user?.phone}
+                {ticket.id}
               </p>
             </div>
-            <div className="flex flex-col gap-2">
-              <Badge className={getStatusColor(ticket.status)}>
-                {ticket.status.replace('_', ' ').toUpperCase()}
-              </Badge>
-              <Select 
-                value={ticket.status} 
-                onValueChange={(value) => handleStatusChange(value as TicketStatus)}
-              >
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="asignado">Asignado</SelectItem>
-                  <SelectItem value="en_progreso">En Progreso</SelectItem>
-                  <SelectItem value="resuelto">Resuelto</SelectItem>
-                  <SelectItem value="cerrado">Cerrado</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Badge className={getStatusColor(ticket.status)}>
+              {ticket.status.replace('_', ' ').toUpperCase()}
+            </Badge>
           </div>
         </CardHeader>
         
@@ -247,6 +237,12 @@ export function TicketChat({ ticket, onStatusChange }: TicketChatProps) {
               <span> • Proveedor: {ticket.serviceProvider}</span>
             )}
           </div>
+          {ticket.assignedExpert && (
+            <div className="mt-3 text-sm">
+              <span className="text-muted-foreground">Asignado a: </span>
+              <span className="font-medium">{ticket.assignedExpert.name}</span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -255,7 +251,10 @@ export function TicketChat({ ticket, onStatusChange }: TicketChatProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
-            Comunicación con el Usuario
+            {ticket.assignedExpert 
+              ? `Comunicación con ${ticket.assignedExpert.name}`
+              : 'Comunicación con el Experto'
+            }
           </CardTitle>
         </CardHeader>
         
@@ -269,22 +268,26 @@ export function TicketChat({ ticket, onStatusChange }: TicketChatProps) {
             ) : messages.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <p>No hay mensajes aún.</p>
-                <p className="text-sm mt-1">Inicia la conversación con el usuario.</p>
+                {ticket.assignedExpert ? (
+                  <p className="text-sm mt-1">El experto se comunicará contigo pronto.</p>
+                ) : (
+                  <p className="text-sm mt-1">Espera a que se asigne un experto a tu ticket.</p>
+                )}
               </div>
             ) : (
               <div className="space-y-4">
                 {messages.map((message) => {
                   const { text, imageUrl } = extractImageUrl(message.content);
-                  const isExpert = message.senderRole === 'experto';
+                  const isUser = message.senderRole === 'usuario';
                   
                   return (
                     <div
                       key={message.id}
-                      className={`flex ${isExpert ? 'justify-end' : 'justify-start'}`}
+                      className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
                         className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                          isExpert
+                          isUser
                             ? 'bg-primary text-primary-foreground'
                             : 'bg-gray-100 text-gray-900'
                         }`}
@@ -332,64 +335,50 @@ export function TicketChat({ ticket, onStatusChange }: TicketChatProps) {
           )}
 
           {/* Message Input */}
-          <div className="flex gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleImageSelect}
-              className="hidden"
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isLoading || uploadingImage}
-              title="Adjuntar imagen"
-            >
-              <ImageIcon className="h-4 w-4" />
-            </Button>
-            <Input
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Escribe tu mensaje..."
-              onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-              disabled={isLoading || uploadingImage}
-            />
-            <Button 
-              onClick={handleSendMessage} 
-              disabled={(!newMessage.trim() && !selectedImage) || isLoading || uploadingImage}
-              size="icon"
-            >
-              {uploadingImage ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="flex gap-2 mt-3">
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setNewMessage('He revisado tu caso y necesito programar una visita técnica. ¿Cuándo estarías disponible?')}
-              disabled={isLoading}
-            >
-              <Wrench className="h-4 w-4 mr-2" />
-              Programar Visita
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setNewMessage('El problema ha sido resuelto. Por favor confirma si todo funciona correctamente.')}
-              disabled={isLoading}
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Marcar Resuelto
-            </Button>
-          </div>
+          {ticket.status !== 'cerrado' && (
+            <div className="flex gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading || uploadingImage}
+                title="Adjuntar imagen"
+              >
+                <ImageIcon className="h-4 w-4" />
+              </Button>
+              <Input
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Escribe tu mensaje..."
+                onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                disabled={isLoading || uploadingImage}
+              />
+              <Button 
+                onClick={handleSendMessage} 
+                disabled={(!newMessage.trim() && !selectedImage) || isLoading || uploadingImage}
+                size="icon"
+              >
+                {uploadingImage ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          )}
+          
+          {ticket.status === 'cerrado' && (
+            <div className="text-center text-sm text-muted-foreground py-2">
+              Este ticket ha sido cerrado. No se pueden enviar más mensajes.
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

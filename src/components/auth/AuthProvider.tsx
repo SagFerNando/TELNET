@@ -8,6 +8,7 @@ interface AuthUser {
   name: string;
   phone: string;
   role: 'usuario' | 'operador' | 'experto';
+  city?: string;
 }
 
 interface AuthContextType {
@@ -16,6 +17,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name: string, phone: string, role: string, additionalData?: any) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -71,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: userData.name || supabaseUser.user_metadata.name || 'Usuario',
         phone: userData.phone || supabaseUser.user_metadata.phone || '',
         role: userData.role || supabaseUser.user_metadata.role || 'usuario',
+        city: userData.city || supabaseUser.user_metadata.city || '',
       });
 
       console.log('Usuario cargado exitosamente con rol:', userData.role);
@@ -85,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: supabaseUser.user_metadata?.name || 'Usuario',
         phone: supabaseUser.user_metadata?.phone || '',
         role: supabaseUser.user_metadata?.role || 'usuario',
+        city: supabaseUser.user_metadata?.city || '',
       });
       
       console.log('Usando datos de fallback del user_metadata');
@@ -141,6 +145,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const refreshUser = async () => {
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.refreshSession();
+
+    if (error) {
+      throw error;
+    }
+
+    if (data.user) {
+      await loadUserData(data.user);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -149,6 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signIn,
         signUp,
         signOut,
+        refreshUser,
       }}
     >
       {children}

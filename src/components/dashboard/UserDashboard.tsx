@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { CreateTicketForm } from '../user/CreateTicketForm';
+import { UserTicketChat } from '../user/UserTicketChat';
 import { TicketCard } from '../shared/TicketCard';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -19,6 +20,7 @@ interface UserStats {
 
 export function UserDashboard() {
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null);
   const [tickets, setTickets] = useState<TicketType[]>([]);
   const [stats, setStats] = useState<UserStats>({
     totalTickets: 0,
@@ -56,6 +58,15 @@ export function UserDashboard() {
     toast.success('Ticket creado exitosamente');
   };
 
+  const handleTicketClick = (ticket: TicketType) => {
+    setSelectedTicket(ticket);
+  };
+
+  const handleBackFromChat = () => {
+    setSelectedTicket(null);
+    loadDashboardData(); // Recargar datos al volver
+  };
+
   if (showCreateForm) {
     return (
       <div className="container mx-auto py-6">
@@ -70,6 +81,12 @@ export function UserDashboard() {
         </div>
         <CreateTicketForm onSuccess={handleTicketCreated} />
       </div>
+    );
+  }
+
+  if (selectedTicket) {
+    return (
+      <UserTicketChat ticket={selectedTicket} onBack={handleBackFromChat} />
     );
   }
 
@@ -189,14 +206,14 @@ export function UserDashboard() {
             </Card>
           ) : (
             tickets.map(ticket => (
-              <TicketCard key={ticket.id} ticket={ticket} />
+              <TicketCard key={ticket.id} ticket={ticket} onClick={() => handleTicketClick(ticket)} />
             ))
           )}
         </TabsContent>
 
         <TabsContent value="pendiente" className="space-y-4">
           {tickets.filter(t => t.status === 'pendiente').map(ticket => (
-            <TicketCard key={ticket.id} ticket={ticket} />
+            <TicketCard key={ticket.id} ticket={ticket} onClick={() => handleTicketClick(ticket)} />
           ))}
           {tickets.filter(t => t.status === 'pendiente').length === 0 && (
             <Card>
@@ -209,7 +226,7 @@ export function UserDashboard() {
 
         <TabsContent value="en_progreso" className="space-y-4">
           {tickets.filter(t => ['asignado', 'en_progreso'].includes(t.status)).map(ticket => (
-            <TicketCard key={ticket.id} ticket={ticket} />
+            <TicketCard key={ticket.id} ticket={ticket} onClick={() => handleTicketClick(ticket)} />
           ))}
           {tickets.filter(t => ['asignado', 'en_progreso'].includes(t.status)).length === 0 && (
             <Card>
@@ -222,7 +239,7 @@ export function UserDashboard() {
 
         <TabsContent value="resuelto" className="space-y-4">
           {tickets.filter(t => t.status === 'resuelto').map(ticket => (
-            <TicketCard key={ticket.id} ticket={ticket} />
+            <TicketCard key={ticket.id} ticket={ticket} onClick={() => handleTicketClick(ticket)} />
           ))}
           {tickets.filter(t => t.status === 'resuelto').length === 0 && (
             <Card>

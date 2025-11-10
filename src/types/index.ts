@@ -88,6 +88,7 @@ export interface Message {
   senderName: string;
   senderRole: 'usuario' | 'experto';
   content: string;
+  imageUrl?: string;  // URL de imagen adjunta (opcional)
   timestamp: string;
 }
 

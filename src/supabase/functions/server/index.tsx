@@ -766,6 +766,46 @@ app.get("/make-server-370afec0/stats", async (c) => {
 });
 
 // ============================================
+// PERFIL
+// ============================================
+
+// Actualizar perfil del usuario
+app.post("/make-server-370afec0/update-profile", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { userId, name, phone, city } = body;
+
+    if (!userId) {
+      return c.json({ error: "userId es requerido" }, 400);
+    }
+
+    // Actualizar perfil en la tabla profiles
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({
+        name: name || '',
+        phone: phone || '',
+        city: city || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+
+    if (updateError) {
+      console.log("Error al actualizar perfil:", updateError);
+      return c.json({ error: "Error al actualizar perfil" }, 500);
+    }
+
+    return c.json({ 
+      success: true, 
+      message: "Perfil actualizado exitosamente" 
+    });
+  } catch (error) {
+    console.log("Error al actualizar perfil:", error);
+    return c.json({ error: "Error al actualizar perfil" }, 500);
+  }
+});
+
+// ============================================
 // HEALTH CHECK
 // ============================================
 

@@ -5,9 +5,10 @@ import { Calendar, MapPin, User, Clock } from 'lucide-react';
 
 interface TicketCardProps {
   ticket: Ticket;
+  onClick?: () => void;
 }
 
-export function TicketCard({ ticket }: TicketCardProps) {
+export function TicketCard({ ticket, onClick }: TicketCardProps) {
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-ES', {
       day: '2-digit',
@@ -19,7 +20,10 @@ export function TicketCard({ ticket }: TicketCardProps) {
   };
 
   return (
-    <Card className="hover:shadow-md transition-shadow">
+    <Card 
+      className={`hover:shadow-md transition-shadow ${onClick ? 'cursor-pointer' : ''}`}
+      onClick={onClick}
+    >
       <CardContent className="p-6">
         {/* Header */}
         <div className="flex justify-between items-start mb-4">
