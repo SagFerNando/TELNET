@@ -548,50 +548,114 @@ app.get("/make-server-370afec0/tickets/:id", async (c) => {
 // Asignar ticket a un experto
 app.post("/make-server-370afec0/tickets/:id/assign", async (c) => {
   const ticketId = c.req.param("id");
+  console.log("🎯 Iniciando asignación - ticketId:", ticketId);
   
   try {
     const user = await verifyAuth(c.req.header("Authorization"));
     if (!user) {
+      console.log("❌ Usuario no autorizado");
       return c.json({ error: "No autorizado" }, 401);
     }
+    console.log("✅ Usuario autenticado:", user.id);
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role, name')
       .eq('id', user.id)
       .single();
 
+    if (profileError) {
+      console.log("❌ Error obteniendo perfil:", profileError);
+      return c.json({ error: "Error obteniendo perfil" }, 500);
+    }
+
     if (profile?.role !== 'operador') {
+      console.log("❌ Usuario no es operador, rol:", profile?.role);
       return c.json({ error: "No tienes permiso para asignar tickets" }, 403);
     }
+    console.log("✅ Operador verificado:", profile.name);
 
-    const { expertId } = await c.req.json();
+    const body = await c.req.json();
+    console.log("📝 Body recibido:", JSON.stringify(body));
+    const { expertId } = body;
+    
     if (!expertId) {
+      console.log("❌ expertId no proporcionado");
       return c.json({ error: "Se requiere expertId" }, 400);
     }
+    console.log("✅ ExpertId recibido:", expertId);
 
-    // Actualizar ticket directamente
+    // Verificar que el ticket existe
+    console.log("🔍 Verificando ticket...");
+    const { data: existingTicket, error: ticketError } = await supabase
+      .from('tickets')
+      .select('id, status, problem_type')
+      .eq('id', ticketId)
+      .single();
+
+    if (ticketError) {
+      console.log("❌ Error verificando ticket:", ticketError);
+      return c.json({ error: "Ticket no encontrado: " + ticketError.message }, 404);
+    }
+    console.log("✅ Ticket encontrado:", existingTicket);
+
+    // Verificar que el experto existe en profiles
+    console.log("🔍 Verificando experto en profiles...");
+    const { data: expertProfile, error: expertError } = await supabase
+      .from('profiles')
+      .select('id, name, role')
+      .eq('id', expertId)
+      .single();
+
+    if (expertError) {
+      console.log("❌ Error verificando experto en profiles:", expertError);
+      return c.json({ error: "Experto no encontrado en profiles: " + expertError.message }, 404);
+    }
+    console.log("✅ Experto encontrado en profiles:", expertProfile);
+
+    // Verificar que el experto existe en la tabla experts (requerido por foreign key)
+    console.log("🔍 Verificando experto en tabla experts...");
+    const { data: expertData, error: expertDataError } = await supabase
+      .from('experts')
+      .select('id')
+      .eq('id', expertId)
+      .single();
+
+    if (expertDataError) {
+      console.log("❌ Error: Experto no existe en tabla experts:", expertDataError);
+      return c.json({ error: "El experto no está registrado en la tabla experts: " + expertDataError.message }, 400);
+    }
+    console.log("✅ Experto verificado en tabla experts:", expertData.id);
+
+    // Actualizar ticket
+    console.log("🔄 Actualizando ticket...");
+    const updateData = {
+      assigned_expert_id: expertId,
+      assigned_by_id: user.id,
+      assigned_at: new Date().toISOString(),
+      status: 'asignado'
+    };
+    console.log("📝 Datos de actualización:", updateData);
+
     const { data: ticket, error } = await supabase
       .from('tickets')
-      .update({
-        assigned_expert_id: expertId,
-        assigned_by_id: user.id,
-        assigned_at: new Date().toISOString(),
-        status: 'asignado'
-      })
+      .update(updateData)
       .eq('id', ticketId)
       .select()
       .single();
 
     if (error) {
-      console.error("Error en asignación:", error);
-      return c.json({ error: error.message || "Error al asignar ticket" }, 500);
+      console.log("❌ Error actualizando ticket:", error);
+      console.log("❌ Detalles del error:", JSON.stringify(error, null, 2));
+      return c.json({ error: "Error al actualizar ticket: " + error.message }, 500);
     }
 
+    console.log("✅ Ticket actualizado exitosamente:", ticket.id);
     return c.json({ success: true, ticket });
   } catch (error: any) {
-    console.error("Error crítico:", error);
-    return c.json({ error: error.message || "Error interno" }, 500);
+    console.log("💥 Error crítico:", error);
+    console.log("💥 Stack:", error.stack);
+    return c.json({ error: "Error interno: " + error.message }, 500);
   }
 });
 
