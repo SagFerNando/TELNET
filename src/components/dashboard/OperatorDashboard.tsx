@@ -251,6 +251,7 @@ export function OperatorDashboard() {
                   Teléfono - Sin línea
                 </SelectItem>
                 <SelectItem value="telefono_ruido">Teléfono - Ruido</SelectItem>
+                <SelectItem value="telefono_spam">Teléfono - Llamadas spam</SelectItem>
                 <SelectItem value="cableado_dañado">
                   Cableado - Dañado
                 </SelectItem>

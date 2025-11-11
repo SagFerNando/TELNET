@@ -39,6 +39,7 @@ const PROBLEM_TYPES: { value: ProblemType; label: string; category: string }[] =
   { value: 'telefono_ruido', label: 'Ruido/Interferencias', category: 'Teléfono' },
   { value: 'telefono_no_recibe', label: 'No recibe llamadas', category: 'Teléfono' },
   { value: 'telefono_no_realiza', label: 'No puede realizar llamadas', category: 'Teléfono' },
+  { value: 'telefono_spam', label: 'Llamadas de spam/no deseadas', category: 'Teléfono' },
   
   // Cableado
   { value: 'cableado_dañado', label: 'Cable dañado', category: 'Cableado' },

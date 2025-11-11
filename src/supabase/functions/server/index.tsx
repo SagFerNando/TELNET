@@ -367,8 +367,8 @@ app.get("/make-server-370afec0/tickets", async (c) => {
     const priority = c.req.query("priority");
     const city = c.req.query("city");
 
-    // Usar vista normalizada con JOINs
-    let query = supabase.from('tickets_with_details').select('*');
+    // Obtener tickets básicos primero
+    let query = supabase.from('tickets').select('*');
 
     // Filtrar según el rol
     if (profile?.role === 'usuario') {
@@ -387,14 +387,75 @@ app.get("/make-server-370afec0/tickets", async (c) => {
     // Ordenar por fecha de creación
     query = query.order('created_at', { ascending: false });
 
-    const { data: tickets, error } = await query;
+    const { data: rawTickets, error } = await query;
 
     if (error) {
       console.log("Error al obtener tickets:", error);
       return c.json({ error: "Error al obtener tickets: " + error.message }, 500);
     }
 
-    return c.json({ tickets: tickets || [] });
+    // Obtener datos de usuarios y expertos por separado para evitar problemas de JOIN
+    const userIds = [...new Set(rawTickets?.map(t => t.user_id).filter(Boolean) || [])];
+    const expertIds = [...new Set(rawTickets?.map(t => t.assigned_expert_id).filter(Boolean) || [])];
+
+    const { data: users } = await supabase
+      .from('profiles')
+      .select('id, name, email, phone, city')
+      .in('id', userIds);
+
+    const { data: experts } = await supabase
+      .from('profiles')
+      .select('id, name, email, city')
+      .in('id', expertIds);
+
+    const { data: expertData } = await supabase
+      .from('experts')
+      .select('id, specializations')
+      .in('id', expertIds);
+
+    // Combinar datos
+    const tickets = rawTickets?.map(ticket => {
+      const user = users?.find(u => u.id === ticket.user_id);
+      const expert = experts?.find(e => e.id === ticket.assigned_expert_id);
+      const expertInfo = expertData?.find(e => e.id === ticket.assigned_expert_id);
+
+      return {
+        ...ticket,
+        // Mapear nombres de campos para compatibilidad
+        id: ticket.id,
+        title: ticket.title,
+        description: ticket.description,
+        problemType: ticket.problem_type,
+        priority: ticket.priority,
+        status: ticket.status,
+        userId: ticket.user_id,
+        assignedExpertId: ticket.assigned_expert_id,
+        assignedAt: ticket.assigned_at,
+        city: ticket.city,
+        address: ticket.address,
+        serviceProvider: ticket.service_provider,
+        createdAt: ticket.created_at,
+        updatedAt: ticket.updated_at,
+        resolvedAt: ticket.resolved_at,
+        closedAt: ticket.closed_at,
+        // Datos del usuario
+        user: user ? {
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          city: user.city
+        } : undefined,
+        // Datos del experto asignado
+        assignedExpert: expert ? {
+          name: expert.name,
+          email: expert.email,
+          city: expert.city,
+          specializations: expertInfo?.specializations || []
+        } : undefined
+      };
+    }) || [];
+
+    return c.json({ tickets });
   } catch (error) {
     console.log("Error al obtener tickets:", error);
     return c.json({ error: "Error al obtener tickets" }, 500);
@@ -411,16 +472,71 @@ app.get("/make-server-370afec0/tickets/:id", async (c) => {
 
     const ticketId = c.req.param("id");
 
-    // Usar vista normalizada con datos de usuario y experto
-    const { data: ticket, error } = await supabase
-      .from('tickets_with_details')
+    // Obtener ticket básico
+    const { data: rawTicket, error } = await supabase
+      .from('tickets')
       .select('*')
       .eq('id', ticketId)
       .single();
 
-    if (error || !ticket) {
+    if (error || !rawTicket) {
       return c.json({ error: "Ticket no encontrado" }, 404);
     }
+
+    // Obtener datos del usuario
+    const { data: user } = await supabase
+      .from('profiles')
+      .select('name, email, phone, city')
+      .eq('id', rawTicket.user_id)
+      .single();
+
+    // Obtener datos del experto si está asignado
+    let expert = null;
+    let expertInfo = null;
+    if (rawTicket.assigned_expert_id) {
+      const { data: expertProfile } = await supabase
+        .from('profiles')
+        .select('name, email, city')
+        .eq('id', rawTicket.assigned_expert_id)
+        .single();
+      
+      const { data: expertData } = await supabase
+        .from('experts')
+        .select('specializations')
+        .eq('id', rawTicket.assigned_expert_id)
+        .single();
+      
+      expert = expertProfile;
+      expertInfo = expertData;
+    }
+
+    // Construir ticket con datos relacionados
+    const ticket = {
+      ...rawTicket,
+      // Mapear nombres de campos para compatibilidad
+      problemType: rawTicket.problem_type,
+      userId: rawTicket.user_id,
+      assignedExpertId: rawTicket.assigned_expert_id,
+      assignedAt: rawTicket.assigned_at,
+      serviceProvider: rawTicket.service_provider,
+      createdAt: rawTicket.created_at,
+      updatedAt: rawTicket.updated_at,
+      resolvedAt: rawTicket.resolved_at,
+      closedAt: rawTicket.closed_at,
+      // Datos relacionados
+      user: user ? {
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        city: user.city
+      } : undefined,
+      assignedExpert: expert ? {
+        name: expert.name,
+        email: expert.email,
+        city: expert.city,
+        specializations: expertInfo?.specializations || []
+      } : undefined
+    };
 
     return c.json({ ticket });
   } catch (error) {
@@ -431,6 +547,8 @@ app.get("/make-server-370afec0/tickets/:id", async (c) => {
 
 // Asignar ticket a un experto
 app.post("/make-server-370afec0/tickets/:id/assign", async (c) => {
+  const ticketId = c.req.param("id");
+  
   try {
     const user = await verifyAuth(c.req.header("Authorization"));
     if (!user) {
@@ -447,15 +565,12 @@ app.post("/make-server-370afec0/tickets/:id/assign", async (c) => {
       return c.json({ error: "No tienes permiso para asignar tickets" }, 403);
     }
 
-    const ticketId = c.req.param("id");
     const { expertId } = await c.req.json();
-
     if (!expertId) {
       return c.json({ error: "Se requiere expertId" }, 400);
     }
 
-    // NORMALIZADO: Solo guardamos IDs, no nombres
-    // Los nombres se obtienen mediante JOIN en la vista
+    // Actualizar ticket directamente
     const { data: ticket, error } = await supabase
       .from('tickets')
       .update({
@@ -467,32 +582,16 @@ app.post("/make-server-370afec0/tickets/:id/assign", async (c) => {
       .eq('id', ticketId)
       .select()
       .single();
-    
-    // Obtener datos del experto solo para el log de actividad
-    const { data: expertProfile } = await supabase
-      .from('profiles')
-      .select('name')
-      .eq('id', expertId)
-      .single();
 
     if (error) {
-      console.log("Error al asignar ticket:", error);
-      return c.json({ error: "Error al asignar ticket" }, 500);
+      console.error("Error en asignación:", error);
+      return c.json({ error: error.message || "Error al asignar ticket" }, 500);
     }
 
-    // Crear actividad
-    await supabase.from('ticket_activities').insert({
-      ticket_id: ticketId,
-      action: 'Ticket asignado',
-      performed_by_id: user.id,
-      performed_by_name: profile?.name || 'Operador',
-      details: `Asignado a ${expertProfile?.name}`
-    });
-
     return c.json({ success: true, ticket });
-  } catch (error) {
-    console.log("Error al asignar ticket:", error);
-    return c.json({ error: "Error al asignar ticket" }, 500);
+  } catch (error: any) {
+    console.error("Error crítico:", error);
+    return c.json({ error: error.message || "Error interno" }, 500);
   }
 });
 
@@ -672,10 +771,42 @@ app.get("/make-server-370afec0/experts", async (c) => {
       return c.json({ error: "No autorizado" }, 401);
     }
 
-    const { data: experts, error } = await supabase
-      .from('experts_with_profile')
-      .select('*')
-      .order('active_tickets', { ascending: true });
+    // Obtener perfiles de expertos
+    const { data: expertProfiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, name, email, city')
+      .eq('role', 'experto');
+
+    if (profilesError) {
+      console.log("Error al obtener perfiles de expertos:", profilesError);
+      return c.json({ error: "Error al obtener expertos: " + profilesError.message }, 500);
+    }
+
+    // Obtener datos adicionales de expertos
+    const { data: expertData, error: expertError } = await supabase
+      .from('experts')
+      .select('id, specializations, active_tickets, total_resolved');
+
+    if (expertError) {
+      console.log("Error al obtener datos de expertos:", expertError);
+      return c.json({ error: "Error al obtener datos de expertos: " + expertError.message }, 500);
+    }
+
+    // Combinar datos
+    const experts = expertProfiles?.map(profile => {
+      const expert = expertData?.find(e => e.id === profile.id);
+      return {
+        id: profile.id,
+        name: profile.name,
+        email: profile.email,
+        city: profile.city,
+        specializations: expert?.specializations || [],
+        activeTickets: expert?.active_tickets || 0,
+        totalResolved: expert?.total_resolved || 0
+      };
+    }).sort((a, b) => a.activeTickets - b.activeTickets) || [];
+
+    const error = null; // Ya manejamos errores arriba
 
     if (error) {
       console.log("Error al obtener expertos:", error);
@@ -815,6 +946,23 @@ app.get("/make-server-370afec0/health", (c) => {
     database: "PostgreSQL",
     timestamp: new Date().toISOString()
   });
+});
+
+// Endpoint de prueba para verificar estructura de tablas
+app.get("/make-server-370afec0/debug/tables", async (c) => {
+  try {
+    const { data: tickets } = await supabase.from('tickets').select('*').limit(1);
+    const { data: profiles } = await supabase.from('profiles').select('*').limit(1);
+    const { data: experts } = await supabase.from('experts').select('*').limit(1);
+    
+    return c.json({
+      tickets: tickets?.[0] || "No data",
+      profiles: profiles?.[0] || "No data", 
+      experts: experts?.[0] || "No data"
+    });
+  } catch (error: any) {
+    return c.json({ error: error.message });
+  }
 });
 
 // Start server

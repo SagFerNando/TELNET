@@ -72,7 +72,7 @@ ADD CONSTRAINT tickets_problem_type_check CHECK (problem_type IN (
   'router_apagado', 'router_configuracion', 'router_wifi_debil', 'router_reinicio_constante',
   'fibra_sin_señal', 'fibra_ont_apagado',
   'adsl_desconexiones', 'adsl_lento',
-  'telefono_sin_linea', 'telefono_ruido', 'telefono_no_recibe', 'telefono_no_realiza',
+  'telefono_sin_linea', 'telefono_ruido', 'telefono_no_recibe', 'telefono_no_realiza', 'telefono_spam',
   'cableado_dañado', 'cableado_instalacion',
   'otro'
 ));
@@ -188,6 +188,7 @@ BEGIN
     WHEN 'telefono_ruido' THEN 'Teléfono - Ruido/Interferencias'
     WHEN 'telefono_no_recibe' THEN 'Teléfono - No recibe llamadas'
     WHEN 'telefono_no_realiza' THEN 'Teléfono - No puede realizar llamadas'
+    WHEN 'telefono_spam' THEN 'Teléfono - Llamadas de spam'
     WHEN 'cableado_dañado' THEN 'Cableado - Cable dañado'
     WHEN 'cableado_instalacion' THEN 'Cableado - Instalación nueva'
     ELSE 'Otro problema'

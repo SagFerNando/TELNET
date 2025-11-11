@@ -16,6 +16,7 @@ export type ProblemType =
   | 'telefono_ruido'
   | 'telefono_no_recibe'
   | 'telefono_no_realiza'
+  | 'telefono_spam'
   | 'cableado_dañado'
   | 'cableado_instalacion'
   | 'otro';
