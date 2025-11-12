@@ -27,6 +27,19 @@ export function TicketChat({ ticket, onStatusChange }: TicketChatProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Validar que el ticket existe
+  if (!ticket || !ticket.id) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Card>
+          <CardContent className="py-10 text-center">
+            <p className="text-red-500">Error: Ticket no válido</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // Cargar mensajes al montar el componente
   useEffect(() => {
     loadMessages();
@@ -43,10 +56,11 @@ export function TicketChat({ ticket, onStatusChange }: TicketChatProps) {
     try {
       setLoadingMessages(true);
       const messagesData = await getMessages(ticket.id);
-      setMessages(messagesData);
+      setMessages(messagesData || []);
     } catch (error: any) {
       console.error('Error cargando mensajes:', error);
       toast.error('Error al cargar mensajes: ' + (error.message || 'Error desconocido'));
+      setMessages([]); // Asegurar que messages sea un array
     } finally {
       setLoadingMessages(false);
     }

@@ -26,6 +26,20 @@ export function UserTicketChat({ ticket, onBack }: UserTicketChatProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Validar que el ticket existe
+  if (!ticket || !ticket.id) {
+    return (
+      <div className="container mx-auto py-6">
+        <Card>
+          <CardContent className="py-10 text-center">
+            <p className="text-red-500 mb-4">Error: Ticket no válido</p>
+            <Button onClick={onBack}>Volver</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // Cargar mensajes al montar el componente
   useEffect(() => {
     loadMessages();
@@ -42,10 +56,11 @@ export function UserTicketChat({ ticket, onBack }: UserTicketChatProps) {
     try {
       setLoadingMessages(true);
       const messagesData = await getMessages(ticket.id);
-      setMessages(messagesData);
+      setMessages(messagesData || []);
     } catch (error: any) {
       console.error('Error cargando mensajes:', error);
       toast.error('Error al cargar mensajes: ' + (error.message || 'Error desconocido'));
+      setMessages([]); // Asegurar que messages sea un array
     } finally {
       setLoadingMessages(false);
     }
@@ -231,10 +246,10 @@ export function UserTicketChat({ ticket, onBack }: UserTicketChatProps) {
                     <span className="font-medium">ID:</span> {ticket.id}
                   </p>
                   <p className="text-muted-foreground">
-                    <span className="font-medium">Ubicación:</span> {ticket.city}
+                    <span className="font-medium">Ubicación:</span> {ticket.city || 'No especificada'}
                   </p>
                   <p className="text-muted-foreground">
-                    <span className="font-medium">Dirección:</span> {ticket.address}
+                    <span className="font-medium">Dirección:</span> {ticket.address || 'No especificada'}
                   </p>
                   {ticket.serviceProvider && (
                     <p className="text-muted-foreground">
@@ -249,7 +264,7 @@ export function UserTicketChat({ ticket, onBack }: UserTicketChatProps) {
                   </p>
                   <p className="text-muted-foreground">
                     <span className="font-medium">Tipo:</span>{' '}
-                    {ticket.problemType.replace(/_/g, ' ')}
+                    {ticket.problemType ? ticket.problemType.replace(/_/g, ' ') : 'No especificado'}
                   </p>
                   {ticket.assignedExpert && (
                     <p className="text-muted-foreground">
